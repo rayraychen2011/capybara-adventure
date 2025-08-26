@@ -1,131 +1,554 @@
 ######################載入套件######################
 import pygame
+import random
+import math
 from src.core.scene_manager import Scene
 from src.core.state_manager import GameState
 from src.player.player import Player
 from src.player.input_controller import InputController
 from src.utils.font_manager import get_font_manager
+from src.systems.npc.npc_manager import NPCManager
 from config.settings import *
+
 
 ######################小鎮場景######################
 class TownScene(Scene):
     """
-    小鎮場景 - 遊戲的主要活動區域\n
+    小鎮場景 - 30x30街道的大型城鎮\n
     \n
-    小鎮是遊戲的中心樞紐，包含各種商業設施和居民\n
-    玩家可以在這裡購物、接受任務、與 NPC 互動\n
-    提供通往其他場景的入口\n
+    這是一個大型的小鎮場景，包含：\n
+    - 30x30的街道網格系統\n
+    - 各種建築物分佈在街區中\n
+    - 城牆圍繞整個小鎮\n
+    - 攝影機系統跟隨玩家移動\n
+    - 各種 NPC 和設施\n
     """
-    
+
     def __init__(self, state_manager):
         """
-        初始化小鎮場景\n
+        初始化大型小鎮場景\n
         \n
         參數:\n
         state_manager (StateManager): 遊戲狀態管理器\n
         """
         super().__init__("小鎮")
         self.state_manager = state_manager
-        
+
         # 取得字體管理器
         self.font_manager = get_font_manager()
-        
-        # 建立玩家角色
-        self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-        
+
+        # 攝影機位置 (用於顯示大地圖的一部分)
+        self.camera_x = CAMERA_START_X
+        self.camera_y = CAMERA_START_Y
+
+        # 建立玩家角色 (放在小鎮中央)
+        player_start_x = TOWN_TOTAL_WIDTH // 2
+        player_start_y = TOWN_TOTAL_HEIGHT // 2
+        self.player = Player(player_start_x, player_start_y)
+
         # 建立輸入控制器
         self.input_controller = InputController(self.player)
-        
-        # 建立場景切換區域
+
+        # 生成小鎮結構
+        self._generate_town_layout()
+        self._generate_buildings()
         self._create_scene_transitions()
-        
-        # 建立建築物
-        self._create_buildings()
-        
-        # 建立 NPC
-        self._create_npcs()
-        
-        print("小鎮場景已建立")
-    
+
+        # 建立 NPC 管理器
+        self.npc_manager = NPCManager()
+
+        # 定義小鎮邊界 (扣除城牆)
+        town_bounds = (
+            WALL_THICKNESS,
+            WALL_THICKNESS,
+            TOWN_TOTAL_WIDTH - WALL_THICKNESS * 2,
+            TOWN_TOTAL_HEIGHT - WALL_THICKNESS * 2,
+        )
+        forest_bounds = (0, 0, SCREEN_WIDTH * 8, SCREEN_HEIGHT * 8)
+
+        # 初始化所有 NPC
+        self.npc_manager.initialize_npcs(town_bounds, forest_bounds)
+
+        # NPC 資訊顯示控制
+        self.show_npc_info = False
+
+        print("大型小鎮場景已建立 (30x30 街道)")
+
+    def _generate_town_layout(self):
+        """
+        生成小鎮的街道佈局\n
+        \n
+        建立 30x30 的街道網格系統\n
+        """
+        self.streets = []
+        self.street_blocks = []
+
+        # 生成橫向街道
+        for y in range(TOWN_GRID_HEIGHT + 1):
+            street_y = y * (BLOCK_SIZE + STREET_WIDTH)
+            street_rect = pygame.Rect(0, street_y, TOWN_TOTAL_WIDTH, STREET_WIDTH)
+            self.streets.append(street_rect)
+
+        # 生成縱向街道
+        for x in range(TOWN_GRID_WIDTH + 1):
+            street_x = x * (BLOCK_SIZE + STREET_WIDTH)
+            street_rect = pygame.Rect(street_x, 0, STREET_WIDTH, TOWN_TOTAL_HEIGHT)
+            self.streets.append(street_rect)
+
+        # 生成街區 (建築物可以放置的區域)
+        for y in range(TOWN_GRID_HEIGHT):
+            for x in range(TOWN_GRID_WIDTH):
+                block_x = x * (BLOCK_SIZE + STREET_WIDTH) + STREET_WIDTH
+                block_y = y * (BLOCK_SIZE + STREET_WIDTH) + STREET_WIDTH
+                block_rect = pygame.Rect(block_x, block_y, BLOCK_SIZE, BLOCK_SIZE)
+                self.street_blocks.append(
+                    {
+                        "rect": block_rect,
+                        "grid_x": x,
+                        "grid_y": y,
+                        "occupied": False,
+                        "building": None,
+                    }
+                )
+
+    def _generate_buildings(self):
+        """
+        在街區中生成各種建築物 - 確保每個街區至少有4棟建築，330個住宅\n
+        """
+        self.buildings = []
+
+        # 建築物類型及其數量 (使用配置檔案中的設定)
+        building_types = [
+            {
+                "name": "住宅",
+                "type": "house",
+                "color": (222, 184, 135),
+                "count": HOUSE_COUNT,
+                "priority": 1,
+            },
+            {
+                "name": "便利商店",
+                "type": "shop",
+                "color": (160, 82, 45),
+                "count": CONVENIENCE_STORE_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "服裝店",
+                "type": "clothing_store",
+                "color": (218, 165, 32),
+                "count": CLOTHING_STORE_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "酒館",
+                "type": "tavern",
+                "color": (139, 69, 19),
+                "count": TAVERN_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "醫院",
+                "type": "hospital",
+                "color": (255, 255, 255),
+                "count": HOSPITAL_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "警察局",
+                "type": "police_station",
+                "color": (70, 130, 180),
+                "count": POLICE_STATION_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "槍械店",
+                "type": "gun_shop",
+                "color": (105, 105, 105),
+                "count": GUN_SHOP_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "銀行",
+                "type": "bank",
+                "color": (255, 215, 0),
+                "count": BANK_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "學校",
+                "type": "school",
+                "color": (255, 182, 193),
+                "count": SCHOOL_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "教堂",
+                "type": "church",
+                "color": (147, 112, 219),
+                "count": CHURCH_COUNT,
+                "priority": 2,
+            },
+            {
+                "name": "公園",
+                "type": "park",
+                "color": (144, 238, 144),
+                "count": PARK_COUNT,
+                "priority": 3,
+            },
+            {
+                "name": "辦公大樓",
+                "type": "office",
+                "color": (169, 169, 169),
+                "count": OFFICE_BUILDING_COUNT,
+                "priority": 3,
+            },
+        ]
+
+        # 建立建築物分配清單
+        building_queue = []
+        for building_type in building_types:
+            for _ in range(building_type["count"]):
+                building_queue.append(
+                    {
+                        "name": building_type["name"],
+                        "type": building_type["type"],
+                        "color": building_type["color"],
+                        "priority": building_type["priority"],
+                    }
+                )
+
+        # 按優先級排序 - 住宅優先
+        building_queue.sort(key=lambda x: x["priority"])
+        random.shuffle(building_queue)  # 在同優先級內隨機排序
+
+        # 為每個街區分配建築物
+        building_index = 0
+        for block in self.street_blocks:
+            if block["occupied"]:
+                continue
+
+            # 每個街區放置 4-6 棟建築物
+            buildings_in_block = random.randint(
+                BUILDINGS_PER_BLOCK, MAX_BUILDINGS_PER_BLOCK
+            )
+
+            # 計算街區內建築物的精確配置，確保不重疊
+            building_configs = self._calculate_building_layout(
+                buildings_in_block, block["rect"]
+            )
+
+            # 記錄當前街區開始前的建築物數量
+            block_start_building_count = len(self.buildings)
+
+            # 在街區內放置建築物
+            for i, building_config in enumerate(building_configs):
+                if building_index >= len(building_queue):
+                    # 如果建築物用完了，用住宅填滿剩餘空間
+                    building_data = {
+                        "name": "住宅",
+                        "type": "house",
+                        "color": (222, 184, 135),
+                        "priority": 1,
+                    }
+                else:
+                    building_data = building_queue[building_index]
+                    building_index += 1
+
+                building_rect = building_config["rect"]
+
+                # 安全檢查：確保建築物不會與所有已存在的建築物重疊
+                # 檢查整個建築物清單，確保沒有重疊
+                collision = False
+                for existing_building in self.buildings:
+                    if building_rect.colliderect(existing_building["area"]):
+                        collision = True
+                        break
+
+                if collision:
+                    # 發生碰撞，跳過此建築物
+                    continue
+
+                # 互動點在建築物前方 (下方)
+                interaction_point = (building_rect.centerx, building_rect.bottom + 5)
+
+                building = {
+                    "name": building_data["name"],
+                    "type": building_data["type"],
+                    "area": building_rect,
+                    "color": building_data["color"],
+                    "interaction_point": interaction_point,
+                    "grid_x": block["grid_x"],
+                    "grid_y": block["grid_y"],
+                    "block_id": f"{block['grid_x']}_{block['grid_y']}",
+                }
+
+                self.buildings.append(building)
+
+            # 標記街區為已使用
+            block["occupied"] = True
+            block["building_count"] = len(self.buildings) - block_start_building_count
+
+    def _calculate_building_layout(self, building_count, block_rect):
+        """
+        計算街區內建築物的精確布局，確保不重疊\n
+        \n
+        參數:\n
+        building_count (int): 要放置的建築物數量\n
+        block_rect (pygame.Rect): 街區矩形區域\n
+        \n
+        回傳:\n
+        list: 建築物配置清單，每個包含位置和尺寸\n
+        """
+        configs = []
+
+        # 街區內可用空間（扣除加大的邊距）
+        margin = BUILDING_MARGIN * 2  # 加大邊距
+        usable_width = block_rect.width - margin * 2
+        usable_height = block_rect.height - margin * 2
+        base_x = block_rect.x + margin
+        base_y = block_rect.y + margin
+
+        if building_count == 3:
+            # 3個建築物：上排2個，下排1個居中
+            gap = BUILDING_MARGIN
+            building_width = (usable_width - gap) // 2
+            building_height = (usable_height - gap) // 2
+
+            # 上排2個建築物
+            configs.append(
+                {"rect": pygame.Rect(base_x, base_y, building_width, building_height)}
+            )
+            configs.append(
+                {
+                    "rect": pygame.Rect(
+                        base_x + building_width + gap,
+                        base_y,
+                        building_width,
+                        building_height,
+                    )
+                }
+            )
+
+            # 下排1個居中建築物
+            center_x = base_x + (usable_width - building_width) // 2
+            center_y = base_y + building_height + gap
+            configs.append(
+                {
+                    "rect": pygame.Rect(
+                        center_x, center_y, building_width, building_height
+                    )
+                }
+            )
+
+        elif building_count == 4:
+            # 2x2 配置 - 四個等大的建築物
+            gap = BUILDING_MARGIN  # 建築物間的間距
+            building_width = (usable_width - gap) // 2
+            building_height = (usable_height - gap) // 2
+
+            positions = [(0, 0), (1, 0), (0, 1), (1, 1)]  # 上排  # 下排
+
+            for col, row in positions:
+                x = base_x + col * (building_width + gap)
+                y = base_y + row * (building_height + gap)
+                configs.append(
+                    {"rect": pygame.Rect(x, y, building_width, building_height)}
+                )
+
+        elif building_count == 5:
+            # 2x2 + 1個中央較小建築
+            gap = BUILDING_MARGIN
+            # 四角的建築稍微小一些，為中央建築留空間
+            building_width = (usable_width - gap * 3) // 2
+            building_height = (usable_height - gap * 3) // 2
+
+            # 四角建築物
+            corner_positions = [(0, 0), (1, 0), (0, 1), (1, 1)]
+            for col, row in corner_positions:
+                x = base_x + col * (building_width + gap * 1.5)
+                y = base_y + row * (building_height + gap * 1.5)
+                configs.append(
+                    {"rect": pygame.Rect(x, y, building_width, building_height)}
+                )
+
+            # 中央小建築 - 確保不重疊
+            center_size = min(building_width, building_height) // 2
+            center_x = base_x + (usable_width - center_size) // 2
+            center_y = base_y + (usable_height - center_size) // 2
+            configs.append(
+                {"rect": pygame.Rect(center_x, center_y, center_size, center_size)}
+            )
+
+        else:  # building_count == 6
+            # 3x2 配置 - 六個等大的建築物
+            gap = BUILDING_MARGIN
+            building_width = (usable_width - gap * 2) // 3
+            building_height = (usable_height - gap) // 2
+
+            positions = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]  # 上排  # 下排
+
+            for col, row in positions:
+                x = base_x + col * (building_width + gap)
+                y = base_y + row * (building_height + gap)
+                configs.append(
+                    {"rect": pygame.Rect(x, y, building_width, building_height)}
+                )
+
+        return configs
+
+    def _check_building_collision(self, new_building_rect):
+        """
+        檢查新建築物是否與已存在的建築物重疊\n
+        \n
+        參數:\n
+        new_building_rect (pygame.Rect): 新建築物的矩形區域\n
+        \n
+        回傳:\n
+        bool: True 如果有重疊，False 如果沒有重疊\n
+        """
+        for existing_building in self.buildings:
+            if new_building_rect.colliderect(existing_building["area"]):
+                return True
+        return False
+
+        print(f"建築物生成完成: 總共 {len(self.buildings)} 棟建築物")
+
+        # 統計建築物類型
+        building_stats = {}
+        for building in self.buildings:
+            building_type = building["type"]
+            building_stats[building_type] = building_stats.get(building_type, 0) + 1
+
+        print("建築物統計:")
+        for building_type, count in building_stats.items():
+            type_name = {
+                "house": "住宅",
+                "shop": "便利商店",
+                "clothing_store": "服裝店",
+                "tavern": "酒館",
+                "hospital": "醫院",
+                "police_station": "警察局",
+                "gun_shop": "槍械店",
+                "bank": "銀行",
+                "school": "學校",
+                "church": "教堂",
+                "park": "公園",
+                "office": "辦公大樓",
+            }.get(building_type, building_type)
+            print(f"  {type_name}: {count} 棟")
+
     def _create_scene_transitions(self):
         """
-        建立場景切換區域\n
+        建立場景切換區域 - 在城牆的出入口\n
         """
         self.scene_transitions = [
             {
                 "name": "森林入口",
                 "target_scene": SCENE_FOREST,
-                "area": pygame.Rect(50, 50, 100, 50),
-                "color": (34, 139, 34)  # 綠色
+                "area": pygame.Rect(
+                    0, TOWN_TOTAL_HEIGHT // 2 - 50, WALL_THICKNESS, 100
+                ),
+                "color": (34, 139, 34),
+                "description": "向西進入森林",
             },
             {
-                "name": "湖泊碼頭",
+                "name": "湖泊入口",
                 "target_scene": SCENE_LAKE,
-                "area": pygame.Rect(SCREEN_WIDTH - 150, 50, 100, 50),
-                "color": (0, 191, 255)  # 藍色
+                "area": pygame.Rect(
+                    TOWN_TOTAL_WIDTH - WALL_THICKNESS,
+                    TOWN_TOTAL_HEIGHT // 2 - 50,
+                    WALL_THICKNESS,
+                    100,
+                ),
+                "color": (0, 191, 255),
+                "description": "向東前往湖泊",
             },
             {
-                "name": "回家",
+                "name": "家入口",
                 "target_scene": SCENE_HOME,
-                "area": pygame.Rect(SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT - 100, 100, 50),
-                "color": (255, 215, 0)  # 金色
-            }
-        ]
-    
-    def _create_buildings(self):
-        """
-        建立建築物\n
-        """
-        self.buildings = [
-            {
-                "name": "便利商店",
-                "type": "shop",
-                "area": pygame.Rect(200, 150, 120, 80),
-                "color": BUILDING_COLOR,
-                "interaction_point": (260, 250)
+                "area": pygame.Rect(
+                    TOWN_TOTAL_WIDTH // 2 - 50,
+                    TOWN_TOTAL_HEIGHT - WALL_THICKNESS,
+                    100,
+                    WALL_THICKNESS,
+                ),
+                "color": (255, 215, 0),
+                "description": "向南回家 (可傳送)",
             },
-            {
-                "name": "服裝店",
-                "type": "clothing_store",
-                "area": pygame.Rect(400, 150, 120, 80),
-                "color": BUILDING_COLOR,
-                "interaction_point": (460, 250)
-            },
-            {
-                "name": "酒館",
-                "type": "tavern",
-                "area": pygame.Rect(600, 150, 120, 80),
-                "color": BUILDING_COLOR,
-                "interaction_point": (660, 250)
-            }
         ]
-    
-    def _create_npcs(self):
+
+    def set_entry_from_scene(self, previous_scene_name):
         """
-        建立 NPC 角色\n
+        設定玩家從指定場景進入小鎮時的位置\n
+        \n
+        參數:\n
+        previous_scene_name (str): 前一個場景的名稱\n
         """
-        self.npcs = [
-            {
-                "name": "商店老闆",
-                "position": (260, 200),
-                "color": (255, 0, 255),  # 紫色
-                "dialogue": ["歡迎光臨！", "今天想買什麼呢？"]
-            },
-            {
-                "name": "路人甲",
-                "position": (500, 350),
-                "color": (0, 255, 255),  # 青色
-                "dialogue": ["天氣真好呢！", "小鎮最近很熱鬧。"]
-            }
-        ]
-    
+        self.entry_from_scene = previous_scene_name
+
     def enter(self):
         """
         進入小鎮場景\n
         """
         super().enter()
-        print("歡迎來到小鎮！")
-    
+
+        # 根據前一個場景設定玩家入口位置
+        self._set_entry_position()
+
+        print("歡迎來到大型小鎮！")
+
+    def _set_entry_position(self):
+        """
+        根據前一個場景設定玩家的入口位置\n
+        \n
+        從不同場景進入時，玩家會出現在對應的城門位置\n
+        """
+        if hasattr(self, "entry_from_scene") and self.entry_from_scene:
+            previous_scene = self.entry_from_scene
+
+            if previous_scene == "森林":
+                # 從森林回來，出現在西城門
+                self.player.set_position(WALL_THICKNESS + 50, TOWN_TOTAL_HEIGHT // 2)
+            elif previous_scene == "湖泊":
+                # 從湖泊回來，出現在東城門
+                self.player.set_position(
+                    TOWN_TOTAL_WIDTH - WALL_THICKNESS - 100, TOWN_TOTAL_HEIGHT // 2
+                )
+            elif previous_scene == "家":
+                # 從家回來，出現在南城門
+                self.player.set_position(
+                    TOWN_TOTAL_WIDTH // 2, TOWN_TOTAL_HEIGHT - WALL_THICKNESS - 100
+                )
+            else:
+                self._set_default_position()
+        else:
+            self._set_default_position()
+
+        # 更新攝影機位置跟隨玩家
+        self._update_camera()
+
+    def _set_default_position(self):
+        """
+        設定玩家的預設位置（小鎮中央）\n
+        """
+        self.player.set_position(
+            TOWN_TOTAL_WIDTH // 2 - self.player.width // 2,
+            TOWN_TOTAL_HEIGHT // 2 - self.player.height // 2,
+        )
+
+    def _update_camera(self):
+        """
+        更新攝影機位置，讓它跟隨玩家移動\n
+        """
+        # 攝影機居中跟隨玩家
+        target_camera_x = self.player.x - SCREEN_WIDTH // 2
+        target_camera_y = self.player.y - SCREEN_HEIGHT // 2
+
+        # 限制攝影機不超出小鎮邊界
+        self.camera_x = max(0, min(target_camera_x, TOWN_TOTAL_WIDTH - SCREEN_WIDTH))
+        self.camera_y = max(0, min(target_camera_y, TOWN_TOTAL_HEIGHT - SCREEN_HEIGHT))
+
     def update(self, dt):
         """
         更新小鎮場景邏輯\n
@@ -133,50 +556,166 @@ class TownScene(Scene):
         參數:\n
         dt (float): 時間間隔\n
         """
+        # 記錄玩家移動前的位置
+        prev_player_x = self.player.x
+        prev_player_y = self.player.y
+
         # 更新輸入控制器
         self.input_controller.update(dt)
-        
+
         # 更新玩家角色
         self.player.update(dt)
-        
+
+        # 限制玩家移動範圍（包含建築物碰撞檢測）
+        self._constrain_player_to_town_with_collision_check(
+            prev_player_x, prev_player_y
+        )
+
+        # 更新攝影機位置
+        self._update_camera()
+
+        # 更新 NPC 系統
+        player_position = self.player.get_center_position()
+        self.npc_manager.update(dt, player_position)
+
         # 檢查場景切換
         self._check_scene_transitions()
-        
+
         # 檢查建築物互動
         self._check_building_interactions()
-        
+
         # 檢查 NPC 互動
         self._check_npc_interactions()
-    
+
+    def _constrain_player_to_town_with_collision_check(self, prev_x, prev_y):
+        """
+        限制玩家移動範圍 - 不能穿越城牆和建築物\n
+        \n
+        檢查玩家移動是否會與建築物碰撞\n
+        如果會碰撞，則阻止移動並將玩家移回安全位置\n
+        確保玩家只能在道路和空地上移動\n
+        \n
+        參數:\n
+        prev_x (float): 玩家移動前的 X 座標\n
+        prev_y (float): 玩家移動前的 Y 座標\n
+        """
+        # 建立玩家當前的碰撞矩形
+        player_rect = pygame.Rect(
+            self.player.x, self.player.y, self.player.width, self.player.height
+        )
+
+        # 檢查是否與建築物碰撞
+        collision_detected = False
+        for building in self.buildings:
+            if player_rect.colliderect(building["area"]):
+                collision_detected = True
+                break
+
+        # 如果發生碰撞，將玩家移回安全位置
+        if collision_detected:
+            # 嘗試只回退 X 座標
+            self.player.x = prev_x
+            player_rect.x = int(self.player.x)
+
+            # 檢查只回退 X 是否還有碰撞
+            x_collision = False
+            for building in self.buildings:
+                if player_rect.colliderect(building["area"]):
+                    x_collision = True
+                    break
+
+            if x_collision:
+                # 如果還有碰撞，也回退 Y 座標
+                self.player.y = prev_y
+                player_rect.y = int(self.player.y)
+
+            # 停止玩家移動方向，防止持續撞牆
+            self.player.stop_movement()
+
+        # 確保玩家不會穿越城牆
+        if self.player.x < WALL_THICKNESS:
+            self.player.x = WALL_THICKNESS
+        elif self.player.x + self.player.width > TOWN_TOTAL_WIDTH - WALL_THICKNESS:
+            self.player.x = TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width
+
+        if self.player.y < WALL_THICKNESS:
+            self.player.y = WALL_THICKNESS
+        elif self.player.y + self.player.height > TOWN_TOTAL_HEIGHT - WALL_THICKNESS:
+            self.player.y = TOWN_TOTAL_HEIGHT - WALL_THICKNESS - self.player.height
+
+        # 更新玩家矩形位置
+        self.player.rect.x = int(self.player.x)
+        self.player.rect.y = int(self.player.y)
+
     def _check_scene_transitions(self):
         """
-        檢查場景切換\n
+        檢查場景切換 - 檢查玩家是否接觸城門出入口\n
         """
         player_rect = self.player.rect
-        
+
         for transition in self.scene_transitions:
             if player_rect.colliderect(transition["area"]):
                 target_scene = transition["target_scene"]
-                print(f"切換到場景: {transition['name']}")
-                self.request_scene_change(target_scene)
-                break
-    
+
+                if target_scene == SCENE_HOME:
+                    # 回家可以直接傳送
+                    print(f"傳送回家: {transition['name']}")
+                    self.request_scene_change(target_scene)
+                    break
+                else:
+                    # 其他場景需要確認移動方向
+                    if self._is_player_moving_towards_transition(transition):
+                        print(f"步行前往: {transition['name']}")
+                        self.request_scene_change(target_scene)
+                        break
+
+    def _is_player_moving_towards_transition(self, transition):
+        """
+        檢查玩家是否正在向指定方向移動\n
+        \n
+        參數:\n
+        transition (dict): 場景切換區域資料\n
+        \n
+        回傳:\n
+        bool: 是否正在向該方向移動\n
+        """
+        direction_x = self.player.direction_x
+        direction_y = self.player.direction_y
+
+        # 如果玩家沒有移動，不觸發場景切換
+        if direction_x == 0 and direction_y == 0:
+            return False
+
+        target_scene = transition["target_scene"]
+
+        # 根據目標場景檢查移動方向
+        if target_scene == SCENE_FOREST:
+            # 森林在西邊，需要向左移動
+            return direction_x < 0
+        elif target_scene == SCENE_LAKE:
+            # 湖泊在東邊，需要向右移動
+            return direction_x > 0
+
+        return False
+
     def _check_building_interactions(self):
         """
         檢查建築物互動\n
         """
         if self.input_controller.is_action_key_just_pressed("interact"):
             player_pos = self.player.get_center_position()
-            
+
             for building in self.buildings:
                 interaction_point = building["interaction_point"]
-                distance = ((player_pos[0] - interaction_point[0]) ** 2 + 
-                           (player_pos[1] - interaction_point[1]) ** 2) ** 0.5
-                
-                if distance < 50:  # 互動範圍
+                distance = math.sqrt(
+                    (player_pos[0] - interaction_point[0]) ** 2
+                    + (player_pos[1] - interaction_point[1]) ** 2
+                )
+
+                if distance < 60:  # 互動範圍
                     self._interact_with_building(building)
                     break
-    
+
     def _interact_with_building(self, building):
         """
         與建築物互動\n
@@ -186,145 +725,285 @@ class TownScene(Scene):
         """
         building_type = building["type"]
         building_name = building["name"]
-        
+
         print(f"與{building_name}互動")
-        
-        if building_type == "shop":
-            print("便利商店：歡迎光臨！想買些什麼嗎？")
-            # 這裡可以實作商店系統
-        elif building_type == "clothing_store":
-            print("服裝店：我們有最時尚的服裝！")
-            # 這裡可以實作服裝系統
-        elif building_type == "tavern":
-            print("酒館：來杯飲料休息一下吧！")
-            # 這裡可以實作休息系統
-    
+
+        interaction_messages = {
+            "shop": "便利商店：歡迎光臨！想買些什麼嗎？",
+            "clothing_store": "服裝店：我們有最時尚的服裝！",
+            "tavern": "酒館：來杯飲料休息一下吧！",
+            "hospital": "醫院：需要醫療服務嗎？",
+            "police_station": "警察局：有什麼案件要報告嗎？",
+            "gun_shop": "槍械店：合法的武器在這裡！",
+            "bank": "銀行：您需要金融服務嗎？",
+            "school": "學校：知識改變命運！",
+            "church": "教堂：願神保佑你！",
+            "park": "公園：享受大自然的美好！",
+            "house": "住宅：有人在家嗎？",
+            "office": "辦公大樓：商業活動繁忙中...",
+        }
+
+        message = interaction_messages.get(building_type, f"{building_name}：您好！")
+        print(message)
+
     def _check_npc_interactions(self):
         """
         檢查 NPC 互動\n
         """
         if self.input_controller.is_action_key_just_pressed("interact"):
             player_pos = self.player.get_center_position()
-            
-            for npc in self.npcs:
-                npc_pos = npc["position"]
-                distance = ((player_pos[0] - npc_pos[0]) ** 2 + 
-                           (player_pos[1] - npc_pos[1]) ** 2) ** 0.5
-                
-                if distance < 50:  # 互動範圍
-                    self._talk_to_npc(npc)
-                    break
-    
-    def _talk_to_npc(self, npc):
-        """
-        與 NPC 對話\n
-        \n
-        參數:\n
-        npc (dict): NPC 資料\n
-        """
-        import random
-        npc_name = npc["name"]
-        dialogue = random.choice(npc["dialogue"])
-        print(f"{npc_name}: {dialogue}")
-    
+
+            # 使用 NPC 管理器查找附近的 NPC
+            nearby_npc = self.npc_manager.get_npc_at_position(player_pos, 50)
+
+            if nearby_npc:
+                self.npc_manager.interact_with_npc(nearby_npc)
+
     def draw(self, screen):
         """
-        繪製小鎮場景\n
+        繪製大型小鎮場景\n
+        \n
+        使用攝影機系統只繪製可見區域的內容\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
         # 清空背景為草地綠色
         screen.fill(GRASS_COLOR)
-        
-        # 繪製道路
-        self._draw_roads(screen)
-        
+
+        # 計算可見區域
+        visible_rect = pygame.Rect(
+            self.camera_x, self.camera_y, SCREEN_WIDTH, SCREEN_HEIGHT
+        )
+
+        # 繪製城牆
+        self._draw_walls(screen, visible_rect)
+
+        # 繪製道路網格
+        self._draw_streets(screen, visible_rect)
+
         # 繪製建築物
-        self._draw_buildings(screen)
-        
-        # 繪製場景切換區域
-        self._draw_scene_transitions(screen)
-        
-        # 繪製 NPC
-        self._draw_npcs(screen)
-        
-        # 繪製玩家角色
-        self.player.draw(screen)
-        
-        # 繪製 UI
+        self._draw_buildings(screen, visible_rect)
+
+        # 繪製場景切換區域（城門）
+        self._draw_scene_transitions(screen, visible_rect)
+
+        # 繪製 NPC（相對於攝影機位置）
+        camera_position = (
+            self.camera_x + SCREEN_WIDTH // 2,
+            self.camera_y + SCREEN_HEIGHT // 2,
+        )
+        self.npc_manager.draw(screen, camera_position, self.show_npc_info)
+
+        # 繪製玩家角色（相對於攝影機位置）
+        player_screen_x = self.player.x - self.camera_x
+        player_screen_y = self.player.y - self.camera_y
+
+        # 只有當玩家在可見範圍內時才繪製
+        if 0 <= player_screen_x < SCREEN_WIDTH and 0 <= player_screen_y < SCREEN_HEIGHT:
+            # 暫時移動玩家矩形位置來繪製
+            original_rect = self.player.rect.copy()
+            self.player.rect.x = player_screen_x
+            self.player.rect.y = player_screen_y
+            self.player.draw(screen)
+            self.player.rect = original_rect
+
+        # 繪製 UI（固定在螢幕上）
         self._draw_ui(screen)
-    
-    def _draw_roads(self, screen):
+
+        # 繪製小地圖
+        self._draw_minimap(screen)
+
+    def _draw_walls(self, screen, visible_rect):
         """
-        繪製道路\n
+        繪製城牆\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        visible_rect (pygame.Rect): 可見區域\n
         """
-        # 主要道路 - 水平
-        pygame.draw.rect(screen, ROAD_COLOR,
-                        (0, SCREEN_HEIGHT // 2 - 25, SCREEN_WIDTH, 50))
-        
-        # 主要道路 - 垂直
-        pygame.draw.rect(screen, ROAD_COLOR,
-                        (SCREEN_WIDTH // 2 - 25, 0, 50, SCREEN_HEIGHT))
-    
-    def _draw_buildings(self, screen):
+        walls = [
+            # 上牆
+            pygame.Rect(0, 0, TOWN_TOTAL_WIDTH, WALL_THICKNESS),
+            # 下牆
+            pygame.Rect(
+                0, TOWN_TOTAL_HEIGHT - WALL_THICKNESS, TOWN_TOTAL_WIDTH, WALL_THICKNESS
+            ),
+            # 左牆
+            pygame.Rect(0, 0, WALL_THICKNESS, TOWN_TOTAL_HEIGHT),
+            # 右牆
+            pygame.Rect(
+                TOWN_TOTAL_WIDTH - WALL_THICKNESS, 0, WALL_THICKNESS, TOWN_TOTAL_HEIGHT
+            ),
+        ]
+
+        for wall in walls:
+            if wall.colliderect(visible_rect):
+                screen_x = wall.x - self.camera_x
+                screen_y = wall.y - self.camera_y
+                screen_rect = pygame.Rect(screen_x, screen_y, wall.width, wall.height)
+                pygame.draw.rect(screen, WALL_COLOR, screen_rect)
+                pygame.draw.rect(screen, (0, 0, 0), screen_rect, 2)
+
+    def _draw_streets(self, screen, visible_rect):
+        """
+        繪製街道網格\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        visible_rect (pygame.Rect): 可見區域\n
+        """
+        for street in self.streets:
+            if street.colliderect(visible_rect):
+                screen_x = street.x - self.camera_x
+                screen_y = street.y - self.camera_y
+                screen_rect = pygame.Rect(
+                    screen_x, screen_y, street.width, street.height
+                )
+                pygame.draw.rect(screen, ROAD_COLOR, screen_rect)
+
+    def _draw_buildings(self, screen, visible_rect):
         """
         繪製建築物\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        visible_rect (pygame.Rect): 可見區域\n
         """
         for building in self.buildings:
-            # 繪製建築物本體
-            pygame.draw.rect(screen, building["color"], building["area"])
-            pygame.draw.rect(screen, (0, 0, 0), building["area"], 2)
-            
-            # 繪製建築物名稱
-            text = self.font_manager.render_text(building["name"], UI_FONT_SIZE, (255, 255, 255))
-            text_rect = text.get_rect(center=building["area"].center)
-            screen.blit(text, text_rect)
-            
-            # 繪製互動點
-            interaction_point = building["interaction_point"]
-            pygame.draw.circle(screen, (255, 255, 0), interaction_point, 5)
-    
-    def _draw_scene_transitions(self, screen):
+            if building["area"].colliderect(visible_rect):
+                # 建築物主體
+                screen_x = building["area"].x - self.camera_x
+                screen_y = building["area"].y - self.camera_y
+                screen_rect = pygame.Rect(
+                    screen_x, screen_y, building["area"].width, building["area"].height
+                )
+
+                pygame.draw.rect(screen, building["color"], screen_rect)
+                pygame.draw.rect(screen, (0, 0, 0), screen_rect, 2)
+
+                # 建築物名稱（只在接近時顯示）
+                player_distance = math.sqrt(
+                    (self.player.x - building["area"].centerx) ** 2
+                    + (self.player.y - building["area"].centery) ** 2
+                )
+
+                if player_distance < 150:  # 150像素內才顯示名稱
+                    text = self.font_manager.render_text(
+                        building["name"], 16, (255, 255, 255)
+                    )
+                    text_rect = text.get_rect(
+                        center=(screen_rect.centerx, screen_rect.centery)
+                    )
+                    screen.blit(text, text_rect)
+
+                # 互動點（只在很接近時顯示）
+                if player_distance < 80:
+                    interaction_point = building["interaction_point"]
+                    screen_interaction_x = interaction_point[0] - self.camera_x
+                    screen_interaction_y = interaction_point[1] - self.camera_y
+                    pygame.draw.circle(
+                        screen,
+                        (255, 255, 0),
+                        (int(screen_interaction_x), int(screen_interaction_y)),
+                        5,
+                    )
+
+    def _draw_scene_transitions(self, screen, visible_rect):
         """
-        繪製場景切換區域\n
+        繪製場景切換區域（城門）\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        visible_rect (pygame.Rect): 可見區域\n
         """
         for transition in self.scene_transitions:
-            # 繪製傳送點區域
-            pygame.draw.rect(screen, transition["color"], transition["area"])
-            pygame.draw.rect(screen, (0, 0, 0), transition["area"], 2)
-            
-            # 繪製標籤文字
-            text = self.font_manager.render_text(transition["name"], DEFAULT_FONT_SIZE, (0, 0, 0))
-            text_rect = text.get_rect(center=transition["area"].center)
-            screen.blit(text, text_rect)
-    
-    def _draw_npcs(self, screen):
+            if transition["area"].colliderect(visible_rect):
+                screen_x = transition["area"].x - self.camera_x
+                screen_y = transition["area"].y - self.camera_y
+                screen_rect = pygame.Rect(
+                    screen_x,
+                    screen_y,
+                    transition["area"].width,
+                    transition["area"].height,
+                )
+
+                pygame.draw.rect(screen, transition["color"], screen_rect)
+                pygame.draw.rect(screen, (0, 0, 0), screen_rect, 2)
+
+                # 標籤文字
+                text = self.font_manager.render_text(transition["name"], 14, (0, 0, 0))
+                text_rect = text.get_rect(center=screen_rect.center)
+                screen.blit(text, text_rect)
+
+    def _draw_minimap(self, screen):
         """
-        繪製 NPC\n
+        繪製小地圖顯示玩家在城市中的位置\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        for npc in self.npcs:
-            # 繪製 NPC 圓形
-            pygame.draw.circle(screen, npc["color"], npc["position"], 15)
-            pygame.draw.circle(screen, (0, 0, 0), npc["position"], 15, 2)
-            
-            # 繪製 NPC 名稱
-            text = self.font_manager.render_text(npc["name"], SMALL_FONT_SIZE, (0, 0, 0))
-            text_rect = text.get_rect(center=(npc["position"][0], npc["position"][1] - 25))
-            screen.blit(text, text_rect)
-    
+        minimap_size = 150
+        minimap_x = SCREEN_WIDTH - minimap_size - 10
+        minimap_y = 10
+
+        # 小地圖背景
+        minimap_rect = pygame.Rect(minimap_x, minimap_y, minimap_size, minimap_size)
+        pygame.draw.rect(screen, (0, 0, 0, 128), minimap_rect)
+        pygame.draw.rect(screen, (255, 255, 255), minimap_rect, 2)
+
+        # 計算縮放比例
+        scale_x = minimap_size / TOWN_TOTAL_WIDTH
+        scale_y = minimap_size / TOWN_TOTAL_HEIGHT
+
+        # 繪製城牆
+        wall_thickness_scaled = max(1, int(WALL_THICKNESS * scale_x))
+        pygame.draw.rect(
+            screen,
+            WALL_COLOR,
+            (minimap_x, minimap_y, minimap_size, wall_thickness_scaled),
+        )
+        pygame.draw.rect(
+            screen,
+            WALL_COLOR,
+            (
+                minimap_x,
+                minimap_y + minimap_size - wall_thickness_scaled,
+                minimap_size,
+                wall_thickness_scaled,
+            ),
+        )
+        pygame.draw.rect(
+            screen,
+            WALL_COLOR,
+            (minimap_x, minimap_y, wall_thickness_scaled, minimap_size),
+        )
+        pygame.draw.rect(
+            screen,
+            WALL_COLOR,
+            (
+                minimap_x + minimap_size - wall_thickness_scaled,
+                minimap_y,
+                wall_thickness_scaled,
+                minimap_size,
+            ),
+        )
+
+        # 繪製玩家位置
+        player_minimap_x = minimap_x + int(self.player.x * scale_x)
+        player_minimap_y = minimap_y + int(self.player.y * scale_y)
+        pygame.draw.circle(screen, (255, 0, 0), (player_minimap_x, player_minimap_y), 3)
+
+        # 繪製可見範圍
+        camera_minimap_x = minimap_x + int(self.camera_x * scale_x)
+        camera_minimap_y = minimap_y + int(self.camera_y * scale_y)
+        camera_minimap_w = int(SCREEN_WIDTH * scale_x)
+        camera_minimap_h = int(SCREEN_HEIGHT * scale_y)
+        camera_minimap_rect = pygame.Rect(
+            camera_minimap_x, camera_minimap_y, camera_minimap_w, camera_minimap_h
+        )
+        pygame.draw.rect(screen, (255, 255, 0), camera_minimap_rect, 1)
+
     def _draw_ui(self, screen):
         """
         繪製使用者介面\n
@@ -333,20 +1012,41 @@ class TownScene(Scene):
         screen (pygame.Surface): 繪製目標表面\n
         """
         # 顯示金錢
-        money_text = self.font_manager.render_text(f"金錢: ${self.player.get_money()}", DEFAULT_FONT_SIZE, (0, 0, 0))
+        money_text = self.font_manager.render_text(
+            f"金錢: ${self.player.get_money()}", DEFAULT_FONT_SIZE, (0, 0, 0)
+        )
         screen.blit(money_text, (10, 10))
-        
+
         # 顯示背包使用情況
         inventory = self.player.get_inventory_list()
         item_count = sum(inventory.values())
         capacity = self.player.inventory_capacity
-        inventory_text = self.font_manager.render_text(f"背包: {item_count}/{capacity}", DEFAULT_FONT_SIZE, (0, 0, 0))
+        inventory_text = self.font_manager.render_text(
+            f"背包: {item_count}/{capacity}", DEFAULT_FONT_SIZE, (0, 0, 0)
+        )
         screen.blit(inventory_text, (10, 35))
-        
+
+        # 顯示 NPC 系統統計
+        stats = self.npc_manager.get_statistics()
+        npc_text = self.font_manager.render_text(
+            f"NPC: {stats['total_npcs']} 人 | 住院: {stats['injured_npcs']} 人 | 時間: {stats['current_hour']:02d}:00",
+            DEFAULT_FONT_SIZE,
+            (0, 0, 0),
+        )
+        screen.blit(npc_text, (10, 60))
+
+        # 顯示電力系統狀態
+        font = pygame.font.Font(None, 20)
+        self.npc_manager.draw_power_grid_status(screen, font)
+
         # 顯示操作提示
-        hint_text = self.font_manager.render_text("E: 互動 | I: 背包 | 走向不同區域切換場景", DEFAULT_FONT_SIZE, (0, 0, 0))
+        hint_text = self.font_manager.render_text(
+            "E: 互動 | I: 背包 | Tab: NPC資訊 | F1: 測試傷害 | 走到邊界切換場景 (回家可傳送)",
+            DEFAULT_FONT_SIZE,
+            (0, 0, 0),
+        )
         screen.blit(hint_text, (10, SCREEN_HEIGHT - 30))
-    
+
     def handle_event(self, event):
         """
         處理小鎮場景輸入事件\n
@@ -359,14 +1059,27 @@ class TownScene(Scene):
         """
         # 讓輸入控制器處理事件
         action = self.input_controller.handle_event(event)
-        
+
+        # 處理鍵盤事件
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_TAB:
+                # Tab 鍵切換 NPC 資訊顯示
+                self.show_npc_info = not self.show_npc_info
+                return True
+            elif event.key == pygame.K_F1:
+                # F1 鍵測試隨機 NPC 受傷 (用於測試電力系統)
+                injured_npc = self.npc_manager.injure_random_npc("測試意外")
+                if injured_npc:
+                    print(f"測試: {injured_npc.name} 受傷住院")
+                return True
+
         if action:
             if action == "inventory":
                 self.state_manager.change_state(GameState.INVENTORY)
                 return True
-        
+
         return False
-    
+
     def get_player(self):
         """
         獲取玩家角色實例\n
