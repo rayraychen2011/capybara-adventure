@@ -123,6 +123,18 @@ class NPCManager:
             npc.road_system = road_system
         print(f"已為 {len(self.all_npcs)} 個 NPC 設定道路系統路徑規劃")
 
+    def set_tile_map_reference(self, tile_map):
+        """
+        為所有 NPC 設定格子地圖參考，用於路徑限制和智能路徑規劃\n
+        \n
+        參數:\n
+        tile_map (TileMapManager): 格子地圖管理器實例\n
+        """
+        self.tile_map = tile_map
+        for npc in self.all_npcs:
+            npc.tile_map = tile_map
+        print(f"已為 {len(self.all_npcs)} 個 NPC 設定格子地圖路徑限制")
+
     def _initialize_power_areas(self, town_bounds):
         """
         初始化 30 個電力區域\n
@@ -193,7 +205,7 @@ class NPCManager:
 
     def _find_safe_spawn_position(self, town_bounds, max_attempts=50):
         """
-        尋找安全的生成位置，避開建築物\n
+        尋找安全的生成位置，避開建築物並確保在可行走區域\n
         \n
         參數:\n
         town_bounds (tuple): 小鎮邊界\n
@@ -208,6 +220,11 @@ class NPCManager:
             # 在小鎮範圍內隨機選擇位置
             x = random.randint(town_x + 50, town_x + town_width - 50)
             y = random.randint(town_y + 50, town_y + town_height - 50)
+
+            # 檢查該位置是否可行走（如果有格子地圖）
+            if hasattr(self, "tile_map") and self.tile_map:
+                if not self.tile_map.is_position_walkable(x, y):
+                    continue  # 不可行走，嘗試下一個位置
 
             # 檢查該位置是否與建築物重疊
             if hasattr(self, "buildings") and self.buildings:
@@ -224,7 +241,7 @@ class NPCManager:
                 if safe_position:
                     return (x, y)
             else:
-                # 如果還沒有建築物列表，直接返回隨機位置
+                # 如果還沒有建築物列表，直接返回可行走位置
                 return (x, y)
 
         # 如果找不到安全位置，返回邊界內的隨機位置

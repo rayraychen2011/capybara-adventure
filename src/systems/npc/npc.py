@@ -100,6 +100,7 @@ class NPC:
 
         # 道路系統整合（路徑規劃用）
         self.road_system = None  # 道路系統引用，用於智能路徑規劃
+        self.tile_map = None     # 格子地圖引用，用於路徑限制
         self.current_path = []  # 當前規劃的路徑點列表
         self.path_index = 0  # 當前路徑點索引
 
@@ -706,23 +707,93 @@ class NPC:
 
     def _set_target_position(self, position):
         """
-        設定移動目標位置，使用智能路徑規劃\n
+        設定移動目標位置，使用格子地圖的智能路徑規劃\n
         \n
         參數:\n
         position (tuple): 目標位置 (x, y)\n
         """
         self.target_x, self.target_y = position
 
-        # 如果有道路系統，嘗試規劃沿路徑移動
-        if hasattr(self, "road_system") and self.road_system:
+        # 優先使用格子地圖進行路徑規劃（限制在人行道和斑馬線）
+        if hasattr(self, "tile_map") and self.tile_map:
+            self._plan_path_using_tile_map(position)
+        elif hasattr(self, "road_system") and self.road_system:
+            # 備用：使用道路系統
             self._plan_path_using_roads(position)
         else:
-            # 沒有道路系統時使用直線移動
+            # 最後備用：直線移動
             self.current_path = [position]
             self.path_index = 0
 
         if not self._is_at_target():
             self.state = NPCState.MOVING
+
+    def _plan_path_using_tile_map(self, target_position):
+        """
+        使用格子地圖系統規劃路徑，限制只能在人行道和斑馬線上移動\n
+        \n
+        參數:\n
+        target_position (tuple): 目標位置 (x, y)\n
+        """
+        try:
+            current_pos = (self.x, self.y)
+            
+            # 使用格子地圖的路徑搜尋功能
+            path_points = self.tile_map.find_path_for_npc(current_pos, target_position)
+            
+            if path_points:
+                self.current_path = path_points
+                self.path_index = 0
+            else:
+                # 如果找不到路徑，嘗試移動到最近的可行走位置
+                self._find_nearest_walkable_position(target_position)
+        
+        except Exception as e:
+            print(f"格子地圖路徑規劃失敗: {e}")
+            # 失敗時嘗試使用道路系統或直線移動
+            if hasattr(self, "road_system") and self.road_system:
+                self._plan_path_using_roads(target_position)
+            else:
+                self.current_path = [target_position]
+                self.path_index = 0
+
+    def _find_nearest_walkable_position(self, target_position):
+        """
+        尋找最近的可行走位置作為目標\n
+        
+        當目標位置不可行走時使用\n
+        
+        參數:\n
+        target_position (tuple): 原始目標位置\n
+        """
+        if not hasattr(self, "tile_map") or not self.tile_map:
+            self.current_path = [target_position]
+            self.path_index = 0
+            return
+        
+        # 在目標位置附近尋找可行走的格子
+        target_x, target_y = target_position
+        
+        for radius in range(1, 10):  # 搜索半徑從1到9格
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if abs(dx) == radius or abs(dy) == radius:  # 只檢查邊界
+                        check_x = target_x + dx * self.tile_map.tile_size
+                        check_y = target_y + dy * self.tile_map.tile_size
+                        
+                        if self.tile_map.is_position_walkable(check_x, check_y):
+                            # 找到可行走位置，規劃到此位置的路徑
+                            path_points = self.tile_map.find_path_for_npc(
+                                (self.x, self.y), (check_x, check_y)
+                            )
+                            if path_points:
+                                self.current_path = path_points
+                                self.path_index = 0
+                                return
+        
+        # 如果找不到可行走位置，保持原地
+        self.current_path = []
+        self.path_index = 0
 
     def _plan_path_using_roads(self, target_position):
         """

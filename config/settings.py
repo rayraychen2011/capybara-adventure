@@ -26,23 +26,23 @@ GAME_TITLE = "小鎮生活模擬器"
 FPS = 60
 
 ######################小鎮地圖設定######################
-# 小鎮總尺寸設定 - 40x25 街道的超大型小鎮 (足夠容納330個住宅)
-TOWN_GRID_WIDTH = 40  # 橫向街道數量 (增加到40條)
-TOWN_GRID_HEIGHT = 25  # 縱向街道數量 (25條)
-STREET_WIDTH = 50  # 每條街道的寬度（像素，增加到50）
-BLOCK_SIZE = 150  # 每個街區的大小（像素，增加到150）
+# 小鎮總尺寸設定 - 30x30 街道的大型小鎮（足夠容納330個住宅）
+TOWN_GRID_WIDTH = 30  # 橫向街區數量
+TOWN_GRID_HEIGHT = 30  # 縱向街區數量 
+STREET_WIDTH = 50  # 每條街道的寬度（像素）
+BLOCK_SIZE = 150  # 每個街區的大小（像素）
 
 # 街區內建築物設定
-BUILDINGS_PER_BLOCK = 3  # 每個街區最少建築物數量（降低密度）
-MAX_BUILDINGS_PER_BLOCK = 4  # 每個街區最多建築物數量（降低密度）
-BUILDING_MARGIN = 12  # 建築物邊距（增加間距）
+BUILDINGS_PER_BLOCK = 3  # 每個街區最少建築物數量
+MAX_BUILDINGS_PER_BLOCK = 4  # 每個街區最多建築物數量
+BUILDING_MARGIN = 12  # 建築物邊距
 
 # 計算小鎮總尺寸
 TOWN_TOTAL_WIDTH = TOWN_GRID_WIDTH * (BLOCK_SIZE + STREET_WIDTH)
 TOWN_TOTAL_HEIGHT = TOWN_GRID_HEIGHT * (BLOCK_SIZE + STREET_WIDTH)
 
 # 城牆設定
-WALL_THICKNESS = 25  # 城牆厚度（增加到25）
+WALL_THICKNESS = 25  # 城牆厚度
 WALL_COLOR = (101, 67, 33)  # 城牆顏色 - 深棕色
 
 # 攝影機/視窗在小鎮中的起始位置
@@ -120,20 +120,13 @@ SCENE_LAKE = "lake"
 SCENE_HOME = "home"
 
 ######################地圖尺寸設定######################
-# 小鎮地圖尺寸 (30x30 街道)
-TOWN_BLOCK_SIZE = 80  # 每個街區的像素大小
-TOWN_GRID_WIDTH = 30  # 街道網格寬度
-TOWN_GRID_HEIGHT = 30  # 街道網格高度
-TOWN_MAP_WIDTH = TOWN_GRID_WIDTH * TOWN_BLOCK_SIZE
-TOWN_MAP_HEIGHT = TOWN_GRID_HEIGHT * TOWN_BLOCK_SIZE
+# 森林地圖尺寸（小鎮的8倍大）
+FOREST_MAP_WIDTH = TOWN_TOTAL_WIDTH * 8
+FOREST_MAP_HEIGHT = TOWN_TOTAL_HEIGHT * 8
 
-# 森林地圖尺寸 (小鎮的8倍大)
-FOREST_MAP_WIDTH = TOWN_MAP_WIDTH * 8
-FOREST_MAP_HEIGHT = TOWN_MAP_HEIGHT * 8
-
-# 湖泊地圖尺寸 (小鎮的10倍大)
-LAKE_MAP_WIDTH = TOWN_MAP_WIDTH * 10
-LAKE_MAP_HEIGHT = TOWN_MAP_HEIGHT * 10
+# 湖泊地圖尺寸（小鎮的10倍大）
+LAKE_MAP_WIDTH = TOWN_TOTAL_WIDTH * 10
+LAKE_MAP_HEIGHT = TOWN_TOTAL_HEIGHT * 10
 
 ######################遊戲系統設定######################
 # 初始金錢數量

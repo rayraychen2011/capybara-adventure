@@ -11,6 +11,7 @@ from src.utils.npc_info_ui import NPCInfoUI
 from src.systems.npc.npc_manager import NPCManager
 from src.systems.road_system import RoadManager
 from src.systems.vehicle_system import VehicleManager
+from src.systems.tile_system import TileMapManager
 from config.settings import *
 
 
@@ -56,6 +57,20 @@ class TownScene(Scene):
         # 建立輸入控制器
         self.input_controller = InputController(self.player)
 
+        # 建立格子地圖系統 (在生成建築前先創建)
+        self.tile_map = TileMapManager(TOWN_TOTAL_WIDTH, TOWN_TOTAL_HEIGHT, grid_size=20)
+
+        # 定義小鎮邊界 (扣除城牆)
+        town_bounds = (
+            WALL_THICKNESS,
+            WALL_THICKNESS,
+            TOWN_TOTAL_WIDTH - WALL_THICKNESS * 2,
+            TOWN_TOTAL_HEIGHT - WALL_THICKNESS * 2,
+        )
+
+        # 創建格子地圖佈局（街道、人行道、斑馬線）
+        self.tile_map.create_town_layout(town_bounds)
+
         # 生成小鎮結構
         self._generate_town_layout()
         self._generate_buildings()
@@ -70,13 +85,6 @@ class TownScene(Scene):
         # 建立載具管理器
         self.vehicle_manager = VehicleManager()
 
-        # 定義小鎮邊界 (扣除城牆)
-        town_bounds = (
-            WALL_THICKNESS,
-            WALL_THICKNESS,
-            TOWN_TOTAL_WIDTH - WALL_THICKNESS * 2,
-            TOWN_TOTAL_HEIGHT - WALL_THICKNESS * 2,
-        )
         forest_bounds = (0, 0, SCREEN_WIDTH * 8, SCREEN_HEIGHT * 8)
 
         # 為 NPC 管理器設定建築物參考（在創建 NPC 之前）
@@ -100,6 +108,9 @@ class TownScene(Scene):
 
         # 為 NPC 設定道路系統參考，用於智能路徑規劃
         self.npc_manager.set_road_system_reference(self.road_manager)
+
+        # 為 NPC 設定格子地圖參考，用於路徑限制
+        self.npc_manager.set_tile_map_reference(self.tile_map)
 
         # 將電力工人註冊到電力系統
         if self.power_manager:
@@ -322,12 +333,22 @@ class TownScene(Scene):
                 building_rect = building_config["rect"]
 
                 # 安全檢查：確保建築物不會與所有已存在的建築物重疊
-                # 檢查整個建築物清單，確保沒有重疊
+                # 並且檢查格子地圖是否允許建造
                 collision = False
                 for existing_building in self.buildings:
                     if building_rect.colliderect(existing_building["area"]):
                         collision = True
                         break
+
+                # 使用格子地圖檢查是否可以建造
+                if not collision:
+                    can_place, error_msg = self.tile_map.can_place_building(
+                        building_rect.x, building_rect.y, 
+                        building_rect.width, building_rect.height
+                    )
+                    if not can_place:
+                        collision = True
+                        print(f"建築放置被格子地圖拒絕: {error_msg}")
 
                 if collision:
                     # 發生碰撞，跳過此建築物
@@ -348,6 +369,12 @@ class TownScene(Scene):
                 }
 
                 self.buildings.append(building)
+
+                # 在格子地圖上標記建築物
+                self.tile_map.place_building(
+                    building_rect.x, building_rect.y, 
+                    building_rect.width, building_rect.height
+                )
 
             # 標記街區為已使用
             block["occupied"] = True
@@ -891,6 +918,9 @@ class TownScene(Scene):
         visible_rect = pygame.Rect(
             self.camera_x, self.camera_y, SCREEN_WIDTH, SCREEN_HEIGHT
         )
+
+        # 繪製格子地圖（人行道、斑馬線等）
+        self.tile_map.draw_debug(screen, self.camera_x, self.camera_y, show_grid=False)
 
         # 繪製城牆
         self._draw_walls(screen, visible_rect)

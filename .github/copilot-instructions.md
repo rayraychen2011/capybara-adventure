@@ -12,11 +12,11 @@ This is a cozy life simulation game featuring a capybara exploring a peaceful to
 GameEngine -> [StateManager + SceneManager + TimeManager + PowerManager] -> Scenes -> [Player + NPCs + Systems]
 ```
 
-- **GameEngine** (`src/core/game_engine.py`): Central coordinator managing main loop, input handling, and system integration
-- **StateManager** (`src/core/state_manager.py`): Enum-based state machine with callback system for transitions (MENU, PLAYING, PAUSED, INVENTORY, etc.)
+- **GameEngine** (`src/core/game_engine.py`): Central coordinator managing main loop, input handling, and system integration with frame-optimized update sequences
+- **StateManager** (`src/core/state_manager.py`): Enum-based state machine with callback system and transition validation (9 states: MENU, PLAYING, PAUSED, INVENTORY, SHOPPING, FISHING, HUNTING, DRIVING, QUIT)
 - **SceneManager** (`src/core/scene_manager.py`): Scene lifecycle management with base `Scene` class inheritance pattern
-- **TimeManager** (`src/systems/time_system.py`): Game time, day/night cycles, work schedules (unique rule: weekends are workdays)
-- **PowerManager** (`src/systems/power_system.py`): Electrical grid simulation affecting 30 town districts
+- **TimeManager** (`src/systems/time_system.py`): Game time, day/night cycles, work schedules (unique rule: weekends are workdays, Monday-Friday rest days)
+- **PowerManager** (`src/systems/power_system.py`): Electrical grid simulation affecting 30 town districts with worker injury system
 
 ### 🎮 Scene System Pattern
 
@@ -33,6 +33,15 @@ Scene registration pattern in GameEngine:
 town_scene = TownScene(self.state_manager, self.time_manager, self.power_manager)
 self.scene_manager.register_scene(SCENE_TOWN, town_scene)
 ```
+
+**Available Scenes**: town, forest, lake, home, menu, inventory
+
+### 🗺️ Map & Terrain System
+
+- **Cupertino Map**: Real-world CSV-based terrain data (`config/cupertino_map_edited.csv`) with 10 terrain types (0-9)
+- **TerrainMapLoader** (`src/utils/terrain_map_loader.py`): Converts CSV terrain codes to game objects
+- **TileMapManager** (`src/systems/tile_system.py`): 30x30 town grid with streets, crosswalks, and building placement
+- **Coordinate System**: Large world coordinates with camera offset for viewport rendering
 
 ### 👤 Player System Architecture
 
@@ -158,8 +167,9 @@ config/          # Centralized settings with detailed comments
 
 - Game dimensions: `SCREEN_WIDTH/HEIGHT`, `FPS`
 - NPC counts: `TOTAL_TOWN_NPCS = 330`, `TOTAL_TRIBE_NPCS = 100`
-- Map layout: 40x25 street grid with `TOWN_GRID_WIDTH/HEIGHT`
+- Map layout: 30x30 street grid with `TOWN_GRID_WIDTH/HEIGHT` (corrected from 40x25)
 - System parameters: Power grid (30 districts), profession distributions
+- **Terrain mapping**: Cupertino CSV data with codes 0-9 for different terrain types
 
 ### 🛠️ Utility Functions (`src/utils/helpers.py`)
 
@@ -168,6 +178,18 @@ config/          # Centralized settings with detailed comments
 - `calculate_distance()`, `normalize_vector()`, `clamp()`
 - `check_rect_collision()`, `safe_load_image()`
 - `draw_text()`, `create_surface_with_alpha()`
+
+### 🗺️ Terrain & Map Integration
+
+```python
+# Loading terrain data from CSV
+terrain_loader = TerrainMapLoader()
+terrain_data = terrain_loader.load_map_from_csv("config/cupertino_map_edited.csv")
+
+# Terrain code meanings (0-9)
+# 0=grass, 1=forest, 2=water, 3=road, 4=highway,
+# 5=residential, 6=commercial, 7=park, 8=parking, 9=hills
+```
 
 ### 🎮 Input Handling Pattern
 
@@ -283,3 +305,10 @@ Game flow: `main()` → `pygame.init()` → `GameEngine()` → `run()` → main 
 - NPC behavior: `npc_manager.get_statistics()` for population overview
 - Power grid: Visual debug via F12 hotkey shows district states
 - Performance: Built-in FPS display and render distance controls
+- **Terrain debugging**: Use `TerrainMapLoader` to visualize CSV terrain data
+
+### 🏗️ Development Entry Points
+
+- **Main entry**: `main.py` calls `GameEngine()` directly (no `if __name__ == "__main__"`)
+- **Core loop**: GameEngine manages 60 FPS loop with optimized system updates (time every 2 frames, power every 3 frames)
+- **Scene creation**: All scenes require `(state_manager, time_manager=None, power_manager=None)` constructor pattern

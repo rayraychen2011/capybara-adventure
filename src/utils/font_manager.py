@@ -1,6 +1,10 @@
 ######################載入套件######################
 import pygame
 import os
+import sys
+
+# 添加專案根目錄到路徑
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from config.settings import *
 
 ######################字體管理器######################
