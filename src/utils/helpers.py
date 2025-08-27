@@ -2,6 +2,7 @@
 import math
 import pygame
 
+
 ######################數學工具函式######################
 def calculate_distance(pos1, pos2):
     """
@@ -22,16 +23,17 @@ def calculate_distance(pos1, pos2):
     """
     # 計算 X 軸方向的距離差
     dx = pos2[0] - pos1[0]
-    
+
     # 計算 Y 軸方向的距離差
     dy = pos2[1] - pos1[1]
-    
+
     # 用勾股定理算出直線距離
     return math.sqrt(dx * dx + dy * dy)
 
+
 def normalize_vector(vector):
     """
-    將向量正規化為單位向量 - 保持方向但長度變為 1\n
+    將向量正規化為單位向量 - 保持方向但長度變為 1（已優化效能）\n
     \n
     正規化向量在移動計算中很重要，可以確保不同方向的移動速度一致\n
     例如斜向移動不會比水平移動更快\n
@@ -45,15 +47,24 @@ def normalize_vector(vector):
     數學原理:\n
     單位向量 = 原向量 / |原向量|\n
     """
-    # 先算出向量的長度
-    length = math.sqrt(vector[0] * vector[0] + vector[1] * vector[1])
-    
-    # 如果長度為零，就不能正規化，直接回傳零向量
-    if length == 0:
+    x, y = vector[0], vector[1]
+
+    # 使用快速的長度平方檢查，避免不必要的平方根計算
+    length_squared = x * x + y * y
+
+    # 如果長度平方為零，就不能正規化，直接回傳零向量
+    if length_squared == 0:
         return (0, 0)
-    
-    # 把向量的每個分量都除以長度，得到單位向量
-    return (vector[0] / length, vector[1] / length)
+
+    # 只在需要時計算平方根
+    if length_squared == 1:
+        # 已經是單位向量，直接回傳
+        return (x, y)
+
+    # 計算長度並正規化
+    length = math.sqrt(length_squared)
+    return (x / length, y / length)
+
 
 def clamp(value, min_value, max_value):
     """
@@ -73,14 +84,48 @@ def clamp(value, min_value, max_value):
     # 如果數值太小，就設定為最小值
     if value < min_value:
         return min_value
-    
+
     # 如果數值太大，就設定為最大值
     elif value > max_value:
         return max_value
-    
+
     # 如果數值在合理範圍內，就保持原樣
     else:
         return value
+
+
+def fast_movement_calculate(direction_x, direction_y, speed, dt):
+    """
+    快速移動計算 - 優化的移動距離計算函數\n
+    \n
+    避免使用複雜的正規化計算，直接處理常見的移動情況\n
+    針對遊戲中最常見的 8 方向移動進行優化\n
+    \n
+    參數:\n
+    direction_x (int): X 軸方向（-1, 0, 1）\n
+    direction_y (int): Y 軸方向（-1, 0, 1）\n
+    speed (float): 移動速度\n
+    dt (float): 時間間隔\n
+    \n
+    回傳:\n
+    tuple: (move_x, move_y) 移動距離\n
+    """
+    # 如果沒有移動，直接回傳零
+    if direction_x == 0 and direction_y == 0:
+        return (0, 0)
+
+    # 計算基礎移動距離
+    base_distance = speed * dt * 60
+
+    # 針對常見情況做快速計算
+    if direction_x == 0 or direction_y == 0:
+        # 單軸移動（上下左右）
+        return (direction_x * base_distance, direction_y * base_distance)
+    else:
+        # 斜向移動，使用預計算的係數 0.707 (1/√2)
+        diagonal_distance = base_distance * 0.707
+        return (direction_x * diagonal_distance, direction_y * diagonal_distance)
+
 
 ######################碰撞檢測工具######################
 def check_rect_collision(rect1, rect2):
@@ -103,6 +148,7 @@ def check_rect_collision(rect1, rect2):
     # 直接使用 Pygame 內建的矩形碰撞檢測
     return rect1.colliderect(rect2)
 
+
 def check_point_in_rect(point, rect):
     """
     檢查點是否在矩形內部 - 常用於滑鼠點擊檢測\n
@@ -119,6 +165,7 @@ def check_point_in_rect(point, rect):
     """
     # 使用 Pygame 矩形的內建方法檢查點是否在內部
     return rect.collidepoint(point)
+
 
 ######################繪圖工具函式######################
 def draw_text(surface, text, font, color, x, y, center=False):
@@ -142,10 +189,10 @@ def draw_text(surface, text, font, color, x, y, center=False):
     """
     # 先把文字渲染成圖片
     text_surface = font.render(text, True, color)
-    
+
     # 取得文字圖片的矩形範圍
     text_rect = text_surface.get_rect()
-    
+
     if center:
         # 如果要置中，就調整文字位置到指定座標的中央
         text_rect.center = (x, y)
@@ -153,12 +200,13 @@ def draw_text(surface, text, font, color, x, y, center=False):
         # 如果不置中，就把文字左上角放在指定座標
         text_rect.x = x
         text_rect.y = y
-    
+
     # 把文字圖片畫到目標表面上
     surface.blit(text_surface, text_rect)
-    
+
     # 回傳文字的位置資訊，方便其他程式使用
     return text_rect
+
 
 def create_surface_with_alpha(width, height, alpha=255):
     """
@@ -177,11 +225,12 @@ def create_surface_with_alpha(width, height, alpha=255):
     """
     # 建立支援 Alpha 通道的表面
     surface = pygame.Surface((width, height), pygame.SRCALPHA)
-    
+
     # 設定整個表面的透明度
     surface.set_alpha(alpha)
-    
+
     return surface
+
 
 ######################檔案處理工具######################
 def safe_load_image(file_path, default_size=(32, 32), default_color=(255, 0, 255)):
@@ -207,7 +256,7 @@ def safe_load_image(file_path, default_size=(32, 32), default_color=(255, 0, 255
         # 如果載入失敗，就建立一個彩色方塊代替
         print(f"無法載入圖片 {file_path}: {e}")
         print(f"使用預設顏色方塊代替，尺寸: {default_size}，顏色: {default_color}")
-        
+
         # 建立一個指定大小的彩色方塊
         surface = pygame.Surface(default_size, pygame.SRCALPHA)
         surface.fill(default_color)

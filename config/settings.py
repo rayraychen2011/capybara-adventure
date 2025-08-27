@@ -80,8 +80,8 @@ GRASS_COLOR = (34, 139, 34)
 WATER_COLOR = (0, 191, 255)
 
 ######################玩家角色設定######################
-# 玩家角色的移動速度，單位為像素/幀
-PLAYER_SPEED = 3
+# 玩家角色的移動速度，單位為像素/幀（已優化）
+PLAYER_SPEED = 4  # 提升移動速度以改善操控感
 
 # 玩家角色的尺寸 - 寬度
 PLAYER_WIDTH = 32
@@ -94,6 +94,20 @@ PLAYER_START_X = SCREEN_WIDTH // 2
 
 # 玩家初始位置 Y 座標
 PLAYER_START_Y = SCREEN_HEIGHT // 2
+
+######################效能優化設定######################
+# 碰撞檢測優化距離（像素）
+COLLISION_CHECK_DISTANCE = 100
+
+# NPC 更新距離分級
+NPC_NEAR_DISTANCE = 300  # 完整更新距離
+NPC_MEDIUM_DISTANCE = 600  # 簡化更新距離
+NPC_FAR_DISTANCE = 1000  # 最簡化更新距離
+
+# 系統更新頻率優化
+TIME_SYSTEM_UPDATE_INTERVAL = 2  # 每2幀更新一次時間系統
+POWER_SYSTEM_UPDATE_INTERVAL = 3  # 每3幀更新一次電力系統
+UI_UPDATE_INTERVAL = 4  # 每4幀更新一次UI
 
 ######################場景設定######################
 # 場景切換區域的檢測範圍，單位為像素

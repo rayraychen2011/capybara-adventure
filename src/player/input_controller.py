@@ -2,6 +2,7 @@
 import pygame
 from src.player.player import Player
 
+
 ######################輸入控制器######################
 class InputController:
     """
@@ -11,7 +12,7 @@ class InputController:
     支援多種輸入方式和可自訂的按鍵配置\n
     提供平滑的移動控制和即時響應\n
     """
-    
+
     def __init__(self, player):
         """
         初始化輸入控制器\n
@@ -22,47 +23,46 @@ class InputController:
         player (Player): 要控制的玩家角色實例\n
         """
         self.player = player
-        
+
         # 按鍵狀態追蹤
         self.keys_pressed = set()
         self.keys_just_pressed = set()  # 本幀剛按下的按鍵
-        
+
         # 移動按鍵映射
         self.movement_keys = {
             # WASD 移動
             pygame.K_w: (0, -1),  # 上
-            pygame.K_s: (0, 1),   # 下
+            pygame.K_s: (0, 1),  # 下
             pygame.K_a: (-1, 0),  # 左
-            pygame.K_d: (1, 0),   # 右
-            
+            pygame.K_d: (1, 0),  # 右
             # 方向鍵移動
-            pygame.K_UP: (0, -1),    # 上
-            pygame.K_DOWN: (0, 1),   # 下
+            pygame.K_UP: (0, -1),  # 上
+            pygame.K_DOWN: (0, 1),  # 下
             pygame.K_LEFT: (-1, 0),  # 左
             pygame.K_RIGHT: (1, 0),  # 右
         }
-        
+
         # 功能按鍵映射
         self.action_keys = {
-            pygame.K_SPACE: "interact",      # 互動
-            pygame.K_e: "interact",          # 互動（備用）
-            pygame.K_i: "inventory",         # 背包
-            pygame.K_TAB: "inventory",       # 背包（備用）
-            pygame.K_m: "map",              # 地圖
-            pygame.K_RETURN: "confirm",      # 確認
-            pygame.K_BACKSPACE: "cancel",    # 取消
-            pygame.K_f: "fishing",          # 釣魚
-            pygame.K_g: "hunting",          # 狩獵
-            pygame.K_v: "vehicle",          # 載具
-            pygame.K_c: "crouch",           # 蹲下（預留）
-            pygame.K_LSHIFT: "run",         # 跑步（預留）
+            pygame.K_SPACE: "interact",  # 互動
+            pygame.K_e: "interact",  # 互動（備用）
+            pygame.K_i: "inventory",  # 背包
+            pygame.K_TAB: "inventory",  # 背包（備用）
+            pygame.K_m: "map",  # 地圖
+            pygame.K_RETURN: "confirm",  # 確認
+            pygame.K_BACKSPACE: "cancel",  # 取消
+            pygame.K_f: "fishing",  # 釣魚
+            pygame.K_g: "hunting",  # 狩獵
+            pygame.K_v: "vehicle",  # 載具
+            pygame.K_c: "crouch",  # 蹲下（預留）
+            pygame.K_LSHIFT: "run",  # 跑步（預留）
         }
-        
+
         # 當前移動向量
         self.movement_vector = [0, 0]
-        
+
         print("輸入控制器已初始化")
-    
+
     def handle_event(self, event):
         """
         處理單個輸入事件\n
@@ -77,30 +77,32 @@ class InputController:
         str: 觸發的動作名稱，如果沒有動作則回傳 None\n
         """
         action_triggered = None
-        
+
         if event.type == pygame.KEYDOWN:
             # 按鍵按下
             self.keys_pressed.add(event.key)
             self.keys_just_pressed.add(event.key)  # 標記為剛按下
-            
+
             # 檢查是否為功能按鍵
             if event.key in self.action_keys:
                 action_triggered = self.action_keys[event.key]
                 print(f"觸發動作: {action_triggered}")
-            
-            # 更新移動向量
-            self._update_movement()
-            
+
+            # 只有移動鍵才需要更新移動向量
+            if event.key in self.movement_keys:
+                self._update_movement()
+
         elif event.type == pygame.KEYUP:
             # 按鍵釋放
             if event.key in self.keys_pressed:
                 self.keys_pressed.remove(event.key)
-            
-            # 更新移動向量
-            self._update_movement()
-        
+
+            # 只有移動鍵才需要更新移動向量
+            if event.key in self.movement_keys:
+                self._update_movement()
+
         return action_triggered
-    
+
     def _update_movement(self):
         """
         更新移動向量\n
@@ -110,7 +112,7 @@ class InputController:
         """
         # 重置移動向量
         self.movement_vector = [0, 0]
-        
+
         # 遍歷所有按下的按鍵
         for key in self.keys_pressed:
             if key in self.movement_keys:
@@ -118,29 +120,58 @@ class InputController:
                 dx, dy = self.movement_keys[key]
                 self.movement_vector[0] += dx
                 self.movement_vector[1] += dy
-        
+
         # 設定玩家移動方向
         self.player.set_movement_direction(
-            self.movement_vector[0],
-            self.movement_vector[1]
+            self.movement_vector[0], self.movement_vector[1]
         )
-    
+
     def update(self, dt):
         """
-        更新輸入控制器狀態\n
+        更新輸入控制器狀態 - 已優化效能\n
         \n
-        每幀調用一次，處理持續性的輸入效果\n
-        例如長按移動鍵的持續移動\n
+        每幀調用一次，使用高效的按鍵檢測提升響應速度\n
+        僅在移動狀態改變時更新玩家，減少不必要的計算\n
         \n
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
-        # 檢查持續按住的功能鍵
-        self._handle_continuous_actions(dt)
-        
+        # 使用 Pygame 的連續按鍵檢測，獲得最佳響應速度
+        current_keys = pygame.key.get_pressed()
+
+        # 快速計算移動向量，針對常見組合進行優化
+        new_movement = [0, 0]
+
+        # 檢查垂直移動（優先檢查，減少分支）
+        if current_keys[pygame.K_w] or current_keys[pygame.K_UP]:
+            new_movement[1] -= 1
+        if current_keys[pygame.K_s] or current_keys[pygame.K_DOWN]:
+            new_movement[1] += 1
+
+        # 檢查水平移動
+        if current_keys[pygame.K_a] or current_keys[pygame.K_LEFT]:
+            new_movement[0] -= 1
+        if current_keys[pygame.K_d] or current_keys[pygame.K_RIGHT]:
+            new_movement[0] += 1
+
+        # 只有移動向量改變時才更新玩家（減少不必要的函數調用）
+        if (
+            new_movement[0] != self.movement_vector[0]
+            or new_movement[1] != self.movement_vector[1]
+        ):
+            self.movement_vector = new_movement
+            # 直接設定玩家移動方向，避免額外的計算
+            self.player.set_movement_direction(
+                self.movement_vector[0], self.movement_vector[1]
+            )
+
+        # 檢查持續按住的功能鍵（較低優先級）
+        if current_keys[pygame.K_LSHIFT] or current_keys[pygame.K_c]:
+            self._handle_continuous_actions(dt)
+
         # 清除本幀剛按下的按鍵記錄
         self.keys_just_pressed.clear()
-    
+
     def _handle_continuous_actions(self, dt):
         """
         處理持續性動作\n
@@ -155,12 +186,12 @@ class InputController:
         if pygame.K_LSHIFT in self.keys_pressed:
             # 跑步狀態 - 目前暫時不實作
             pass
-        
+
         # 檢查蹲下按鍵
         if pygame.K_c in self.keys_pressed:
             # 蹲下狀態 - 目前暫時不實作
             pass
-    
+
     def is_key_pressed(self, key):
         """
         檢查指定按鍵是否正在被按住\n
@@ -172,7 +203,7 @@ class InputController:
         bool: True 表示按鍵正在被按住，False 表示沒有\n
         """
         return key in self.keys_pressed
-    
+
     def is_action_key_pressed(self, action):
         """
         檢查指定動作的按鍵是否正在被按住\n
@@ -187,7 +218,7 @@ class InputController:
             if mapped_action == action and key in self.keys_pressed:
                 return True
         return False
-    
+
     def is_action_key_just_pressed(self, action):
         """
         檢查指定動作的按鍵是否剛剛被按下（本幀）\n
@@ -202,7 +233,7 @@ class InputController:
             if mapped_action == action and key in self.keys_just_pressed:
                 return True
         return False
-    
+
     def is_moving(self):
         """
         檢查玩家是否正在移動\n
@@ -211,7 +242,7 @@ class InputController:
         bool: True 表示有移動輸入，False 表示沒有\n
         """
         return self.movement_vector[0] != 0 or self.movement_vector[1] != 0
-    
+
     def get_movement_vector(self):
         """
         獲取當前移動向量\n
@@ -220,7 +251,7 @@ class InputController:
         tuple: (x, y) 移動方向向量\n
         """
         return tuple(self.movement_vector)
-    
+
     def stop_all_input(self):
         """
         停止所有輸入\n
@@ -232,7 +263,7 @@ class InputController:
         self.movement_vector = [0, 0]
         self.player.stop_movement()
         print("所有輸入已停止")
-    
+
     def set_key_mapping(self, key, action):
         """
         自訂按鍵映射\n
@@ -249,15 +280,15 @@ class InputController:
                 "up": (0, -1),
                 "down": (0, 1),
                 "left": (-1, 0),
-                "right": (1, 0)
+                "right": (1, 0),
             }
             self.movement_keys[key] = direction_map[action]
         else:
             # 功能按鍵映射
             self.action_keys[key] = action
-        
+
         print(f"按鍵映射已更新: {pygame.key.name(key)} -> {action}")
-    
+
     def get_key_name(self, key):
         """
         獲取按鍵的名稱\n
@@ -269,7 +300,7 @@ class InputController:
         str: 按鍵名稱\n
         """
         return pygame.key.name(key)
-    
+
     def get_current_mappings(self):
         """
         獲取當前的按鍵映射配置\n
@@ -279,9 +310,9 @@ class InputController:
         """
         return {
             "movement": self.movement_keys.copy(),
-            "actions": self.action_keys.copy()
+            "actions": self.action_keys.copy(),
         }
-    
+
     def reset_to_default(self):
         """
         重置按鍵映射為預設配置\n
@@ -291,6 +322,7 @@ class InputController:
         self.__init__(self.player)
         print("按鍵映射已重置為預設配置")
 
+
 ######################滑鼠控制器######################
 class MouseController:
     """
@@ -299,7 +331,7 @@ class MouseController:
     處理滑鼠點擊、移動、滾輪等輸入\n
     提供游標位置追蹤和點擊檢測功能\n
     """
-    
+
     def __init__(self):
         """
         初始化滑鼠控制器\n
@@ -307,14 +339,14 @@ class MouseController:
         # 滑鼠位置
         self.mouse_x = 0
         self.mouse_y = 0
-        
+
         # 滑鼠按鍵狀態
         self.left_button_pressed = False
         self.right_button_pressed = False
         self.middle_button_pressed = False
-        
+
         print("滑鼠控制器已初始化")
-    
+
     def handle_event(self, event):
         """
         處理滑鼠事件\n
@@ -326,7 +358,7 @@ class MouseController:
         str: 觸發的動作名稱，如果沒有動作則回傳 None\n
         """
         action_triggered = None
-        
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # 左鍵
                 self.left_button_pressed = True
@@ -337,7 +369,7 @@ class MouseController:
             elif event.button == 3:  # 右鍵
                 self.right_button_pressed = True
                 action_triggered = "right_click"
-        
+
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # 左鍵
                 self.left_button_pressed = False
@@ -345,19 +377,19 @@ class MouseController:
                 self.middle_button_pressed = False
             elif event.button == 3:  # 右鍵
                 self.right_button_pressed = False
-        
+
         elif event.type == pygame.MOUSEMOTION:
             self.mouse_x, self.mouse_y = event.pos
             action_triggered = "mouse_move"
-        
+
         elif event.type == pygame.MOUSEWHEEL:
             if event.y > 0:
                 action_triggered = "scroll_up"
             elif event.y < 0:
                 action_triggered = "scroll_down"
-        
+
         return action_triggered
-    
+
     def get_mouse_position(self):
         """
         獲取滑鼠位置\n
@@ -366,7 +398,7 @@ class MouseController:
         tuple: (x, y) 滑鼠座標\n
         """
         return (self.mouse_x, self.mouse_y)
-    
+
     def is_left_button_pressed(self):
         """
         檢查左鍵是否被按住\n
@@ -375,7 +407,7 @@ class MouseController:
         bool: True 表示左鍵被按住\n
         """
         return self.left_button_pressed
-    
+
     def is_right_button_pressed(self):
         """
         檢查右鍵是否被按住\n

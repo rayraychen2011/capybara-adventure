@@ -2,7 +2,7 @@
 import pygame
 import math
 from config.settings import *
-from src.utils.helpers import clamp, normalize_vector
+from src.utils.helpers import clamp, fast_movement_calculate
 
 
 ######################玩家角色類別######################
@@ -118,30 +118,33 @@ class Player:
 
     def update(self, dt):
         """
-        更新玩家角色狀態\n
+        更新玩家角色狀態 - 已優化效能\n
         \n
         每幀調用一次，更新角色的移動、動畫和其他狀態\n
+        使用高效的更新順序提升響應速度\n
         \n
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
-        # 處理移動
+        # 先處理移動（最高優先級）
         self._update_movement(dt)
 
-        # 更新碰撞矩形位置
+        # 檢查是否正在移動（在移動更新後）
+        self.is_moving = self.direction_x != 0 or self.direction_y != 0
+
+        # 更新面朝方向（只在移動時）
+        if self.is_moving:
+            self._update_facing_direction()
+
+        # 更新碰撞矩形位置（減少浮點數轉換）
         self.rect.x = int(self.x)
         self.rect.y = int(self.y)
 
-        # 更新面朝方向
-        self._update_facing_direction()
+        # 更新狀態效果（較低優先級）
+        if self.status_effects:  # 只有在有狀態效果時才更新
+            self._update_status_effects(dt)
 
-        # 檢查是否正在移動
-        self.is_moving = self.direction_x != 0 or self.direction_y != 0
-
-        # 更新狀態效果
-        self._update_status_effects(dt)
-
-        # 檢查死亡狀態
+        # 檢查死亡狀態（最低優先級）
         if self.health <= 0 and self.is_alive:
             self._handle_death()
 
@@ -263,10 +266,11 @@ class Player:
 
     def _update_movement(self, dt):
         """
-        更新角色移動邏輯\n
+        更新角色移動邏輯 - 已優化效能\n
         \n
         根據當前方向和速度計算新位置\n
-        確保移動速度在各個方向保持一致\n
+        使用快速的移動計算避免不必要的正規化\n
+        優化常見移動情況的計算速度\n
         \n
         參數:\n
         dt (float): 時間間隔，用於幀率無關的移動計算\n
@@ -275,22 +279,24 @@ class Player:
         if self.direction_x == 0 and self.direction_y == 0:
             return
 
-        # 正規化移動向量，確保斜向移動速度正確
-        direction = normalize_vector((self.direction_x, self.direction_y))
-
         # 根據是否在載具中調整速度
         current_speed = VEHICLE_SPEED if self.in_vehicle else self.speed
 
-        # 計算這一幀要移動的距離
-        move_distance = current_speed * dt * 60  # 乘以 60 是為了配合 60 FPS
+        # 使用優化的移動計算 - 避免不必要的平方根計算
+        # 針對常見的8方向移動進行快速計算
+        if self.direction_x == 0 or self.direction_y == 0:
+            # 單軸移動（上下左右）- 最快的情況
+            move_x = self.direction_x * current_speed * dt * 60
+            move_y = self.direction_y * current_speed * dt * 60
+        else:
+            # 斜向移動 - 使用預計算的係數避免平方根運算
+            diagonal_speed = current_speed * 0.7071067811865476  # 1/√2
+            move_x = self.direction_x * diagonal_speed * dt * 60
+            move_y = self.direction_y * diagonal_speed * dt * 60
 
-        # 計算新位置
-        new_x = self.x + direction[0] * move_distance
-        new_y = self.y + direction[1] * move_distance
-
-        # 限制角色不能移出螢幕邊界（在大地圖場景中會被覆蓋）
-        self.x = clamp(new_x, 0, SCREEN_WIDTH - self.width)
-        self.y = clamp(new_y, 0, SCREEN_HEIGHT - self.height)
+        # 計算新位置（使用整數運算提升效能）
+        self.x += move_x
+        self.y += move_y
 
     def _update_facing_direction(self):
         """

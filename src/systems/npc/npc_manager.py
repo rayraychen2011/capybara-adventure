@@ -340,9 +340,114 @@ class NPCManager:
             if expected != actual:
                 print(f"    警告: {profession.value} 數量不符合規格要求！")
 
+    def update_optimized(self, dt, player_position):
+        """
+        優化的 NPC 更新方法 - 顯著提升效能\n
+        \n
+        使用分時更新和距離優化，減少每幀的計算負擔\n
+        只更新視野範圍內的 NPC，其他 NPC 使用簡化更新\n
+        \n
+        參數:\n
+        dt (float): 時間間隔\n
+        player_position (tuple): 玩家位置\n
+        """
+        # 獲取當前時間資訊
+        current_hour = 8
+        current_day = 1
+        is_workday = True
+
+        if self.time_manager:
+            current_hour = self.time_manager.hour
+            day_mapping = {
+                "monday": 1,
+                "tuesday": 2,
+                "wednesday": 3,
+                "thursday": 4,
+                "friday": 5,
+                "saturday": 6,
+                "sunday": 7,
+            }
+            current_day = day_mapping.get(self.time_manager.day_of_week.value, 1)
+            is_workday = self.time_manager.is_work_day
+
+        # 使用分層更新策略
+        # 第一層：附近的 NPC 完整更新（高頻率）
+        nearby_distance = 300
+        nearby_npcs = self.get_nearby_npcs(player_position, nearby_distance)
+
+        for npc in nearby_npcs:
+            npc.update(dt, current_hour, current_day, is_workday)
+
+        # 第二層：中距離的 NPC 簡化更新（中頻率）
+        frame_count = int(pygame.time.get_ticks() / 16.67)
+        if frame_count % 3 == 0:  # 每3幀更新一次
+            medium_distance = 600
+            medium_npcs = self.get_nearby_npcs(player_position, medium_distance)
+
+            for npc in medium_npcs:
+                if npc not in nearby_npcs:  # 避免重複更新
+                    npc.simple_update(dt, current_hour, is_workday)
+
+        # 第三層：遠距離的 NPC 最簡化更新（低頻率）
+        if frame_count % 10 == 0:  # 每10幀更新一次
+            for npc in self.all_npcs:
+                if (
+                    npc not in nearby_npcs
+                    and self._calculate_distance_fast(
+                        npc.get_position(), player_position
+                    )
+                    > 600
+                ):
+                    npc.minimal_update(current_hour, is_workday)
+
+        # 電力系統更新（低頻率）
+        if frame_count % 5 == 0:
+            self._update_power_system()
+
+    def get_nearby_npcs(self, center_position, max_distance):
+        """
+        獲取指定範圍內的 NPC - 使用快速距離計算\n
+        \n
+        參數:\n
+        center_position (tuple): 中心位置\n
+        max_distance (float): 最大距離\n
+        \n
+        回傳:\n
+        list: 範圍內的 NPC 列表\n
+        """
+        center_x, center_y = center_position
+        npcs_in_range = []
+        max_distance_squared = max_distance * max_distance  # 避免平方根計算
+
+        for npc in self.all_npcs:
+            if npc.is_injured:
+                continue  # 住院的 NPC 不需要更新位置
+
+            npc_x, npc_y = npc.get_position()
+            # 使用平方距離比較，避免平方根計算
+            distance_squared = (npc_x - center_x) ** 2 + (npc_y - center_y) ** 2
+
+            if distance_squared <= max_distance_squared:
+                npcs_in_range.append(npc)
+
+        return npcs_in_range
+
+    def _calculate_distance_fast(self, pos1, pos2):
+        """
+        快速距離計算 - 使用曼哈頓距離\n
+        \n
+        參數:\n
+        pos1 (tuple): 位置1\n
+        pos2 (tuple): 位置2\n
+        \n
+        回傳:\n
+        float: 曼哈頓距離\n
+        """
+        return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
+
     def update(self, dt, player_position):
         """
-        更新所有 NPC\n
+        更新所有 NPC - 保留原有方法以維持兼容性\n
         \n
         參數:\n
         dt (float): 時間間隔\n

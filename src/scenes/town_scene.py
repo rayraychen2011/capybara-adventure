@@ -614,7 +614,10 @@ class TownScene(Scene):
 
     def update(self, dt):
         """
-        更新小鎮場景邏輯\n
+        更新小鎮場景邏輯 - 已優化效能\n
+        \n
+        優化更新順序：優先處理玩家輸入和移動\n
+        減少不必要的計算，提升操控響應性\n
         \n
         參數:\n
         dt (float): 時間間隔\n
@@ -623,56 +626,55 @@ class TownScene(Scene):
         prev_player_x = self.player.x
         prev_player_y = self.player.y
 
-        # 更新輸入控制器
+        # 第一優先級：更新輸入控制器（最重要）
         self.input_controller.update(dt)
 
-        # 更新玩家角色
+        # 第二優先級：更新玩家角色（立即響應輸入）
         self.player.update(dt)
 
-        # 限制玩家移動範圍（包含建築物碰撞檢測）
-        self._constrain_player_to_town_with_collision_check(
-            prev_player_x, prev_player_y
-        )
+        # 第三優先級：碰撞檢測（使用優化算法）
+        self._fast_collision_check(prev_player_x, prev_player_y)
 
-        # 更新攝影機位置
+        # 第四優先級：更新攝影機位置
         self._update_camera()
 
-        # 更新道路系統（交通號誌）
-        self.road_manager.update(dt)
+        # 較低優先級：其他系統更新（不影響玩家操控）
+        # 使用時間片輪轉，避免每幀都更新所有系統
+        frame_count = int(pygame.time.get_ticks() / 16.67)  # 假設60FPS
 
-        # 更新載具系統
-        # 獲取當前駕駛的載具
-        current_vehicle = self.vehicle_manager.get_player_vehicle(self.player)
-        pedestrians = self.npc_manager.get_all_npcs()  # NPC 當作行人
+        if frame_count % 2 == 0:  # 每隔一幀更新道路系統
+            self.road_manager.update(dt)
 
-        self.vehicle_manager.update(
-            dt,
-            self.input_controller,
-            self.player if current_vehicle else None,
-            self.road_manager,
-            pedestrians,
-        )
+        if frame_count % 3 == 0:  # 每隔兩幀更新載具系統
+            current_vehicle = self.vehicle_manager.get_player_vehicle(self.player)
+            pedestrians = self.npc_manager.get_nearby_npcs(
+                self.player.get_center_position(), 500
+            )
 
-        # 更新 NPC 系統
+            self.vehicle_manager.update(
+                dt,
+                self.input_controller,
+                self.player if current_vehicle else None,
+                self.road_manager,
+                pedestrians,
+            )
+
+        # NPC 系統使用距離優化，只更新附近的 NPC
         player_position = self.player.get_center_position()
-        self.npc_manager.update(dt, player_position)
+        self.npc_manager.update_optimized(dt, player_position)
 
-        # 檢查場景切換
-        self._check_scene_transitions()
+        # 最低優先級：場景切換和互動檢查
+        if frame_count % 4 == 0:  # 每隔三幀檢查一次場景切換
+            self._check_scene_transitions()
+            self._check_building_interactions()
+            self._check_npc_interactions()
 
-        # 檢查建築物互動
-        self._check_building_interactions()
-
-        # 檢查 NPC 互動
-        self._check_npc_interactions()
-
-    def _constrain_player_to_town_with_collision_check(self, prev_x, prev_y):
+    def _fast_collision_check(self, prev_x, prev_y):
         """
-        限制玩家移動範圍 - 不能穿越城牆和建築物\n
+        快速碰撞檢測 - 使用空間優化算法\n
         \n
-        檢查玩家移動是否會與建築物碰撞\n
-        如果會碰撞，則阻止移動並將玩家移回安全位置\n
-        確保玩家只能在道路和空地上移動\n
+        只檢測玩家附近的建築物，大幅提升效能\n
+        使用粗略距離檢測進行預篩選\n
         \n
         參數:\n
         prev_x (float): 玩家移動前的 X 座標\n
@@ -683,9 +685,27 @@ class TownScene(Scene):
             self.player.x, self.player.y, self.player.width, self.player.height
         )
 
-        # 檢查是否與建築物碰撞
+        # 定義檢測範圍（只檢查玩家附近的建築物）
+        check_distance = 100  # 檢測範圍為100像素
+        player_center_x = self.player.x + self.player.width // 2
+        player_center_y = self.player.y + self.player.height // 2
+
+        # 快速預篩選：只檢查距離玩家較近的建築物
         collision_detected = False
         for building in self.buildings:
+            # 粗略距離檢測（使用曼哈頓距離，比歐幾里得距離快）
+            building_center_x = building["area"].centerx
+            building_center_y = building["area"].centery
+
+            manhattan_distance = abs(player_center_x - building_center_x) + abs(
+                player_center_y - building_center_y
+            )
+
+            # 如果距離太遠，跳過精確碰撞檢測
+            if manhattan_distance > check_distance:
+                continue
+
+            # 精確碰撞檢測
             if player_rect.colliderect(building["area"]):
                 collision_detected = True
                 break
@@ -696,9 +716,20 @@ class TownScene(Scene):
             self.player.x = prev_x
             player_rect.x = int(self.player.x)
 
-            # 檢查只回退 X 是否還有碰撞
+            # 快速檢查只回退 X 是否還有碰撞
             x_collision = False
             for building in self.buildings:
+                # 再次使用距離預篩選
+                building_center_x = building["area"].centerx
+                building_center_y = building["area"].centery
+
+                manhattan_distance = abs(
+                    (self.player.x + self.player.width // 2) - building_center_x
+                ) + abs((self.player.y + self.player.height // 2) - building_center_y)
+
+                if manhattan_distance > check_distance:
+                    continue
+
                 if player_rect.colliderect(building["area"]):
                     x_collision = True
                     break
@@ -706,13 +737,20 @@ class TownScene(Scene):
             if x_collision:
                 # 如果還有碰撞，也回退 Y 座標
                 self.player.y = prev_y
-                player_rect.y = int(self.player.y)
 
             # 停止玩家移動方向，防止持續撞牆
             self.player.stop_movement()
 
-        # 確保玩家不會穿越城牆
+        # 確保玩家不會穿越城牆（簡單邊界檢查，效能最佳）
         if self.player.x < WALL_THICKNESS:
+            self.player.x = WALL_THICKNESS
+        elif self.player.x > TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width:
+            self.player.x = TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width
+
+        if self.player.y < WALL_THICKNESS:
+            self.player.y = WALL_THICKNESS
+        elif self.player.y > TOWN_TOTAL_HEIGHT - WALL_THICKNESS - self.player.height:
+            self.player.y = TOWN_TOTAL_HEIGHT - WALL_THICKNESS - self.player.height
             self.player.x = WALL_THICKNESS
         elif self.player.x + self.player.width > TOWN_TOTAL_WIDTH - WALL_THICKNESS:
             self.player.x = TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width
@@ -1125,7 +1163,7 @@ class TownScene(Scene):
 
         # 顯示操作提示
         hint_text = self.font_manager.render_text(
-            "E: 互動 | 1-0: 選擇物品欄 | Tab: NPC資訊 | F1: 測試傷害 | 走到邊界切換場景",
+            "E: 互動 | 1-0: 選擇物品欄 | Tab: NPC資訊 | 走到邊界切換場景",
             DEFAULT_FONT_SIZE,
             (0, 0, 0),
         )
@@ -1210,12 +1248,6 @@ class TownScene(Scene):
             elif event.key == pygame.K_e:
                 # E 鍵與載具互動
                 return self._handle_vehicle_interaction()
-            elif event.key == pygame.K_F1:
-                # F1 鍵測試隨機 NPC 受傷 (用於測試電力系統)
-                injured_npc = self.npc_manager.injure_random_npc("測試意外")
-                if injured_npc:
-                    print(f"測試: {injured_npc.name} 受傷住院")
-                return True
 
             # 數字鍵選擇物品欄格子 (1-9, 0代表第10格)
             elif pygame.K_1 <= event.key <= pygame.K_9:

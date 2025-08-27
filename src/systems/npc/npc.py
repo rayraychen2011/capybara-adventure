@@ -270,6 +270,45 @@ class NPC:
 
         return dialogues
 
+    def simple_update(self, dt, current_time_hour, is_workday=True):
+        """
+        簡化的 NPC 更新 - 用於中距離 NPC\n
+        \n
+        只更新必要的狀態，跳過複雜的移動計算\n
+        \n
+        參數:\n
+        dt (float): 時間間隔\n
+        current_time_hour (int): 當前小時\n
+        is_workday (bool): 是否為工作日\n
+        """
+        if self.is_injured:
+            return
+
+        # 只更新工作狀態，不計算移動
+        if is_workday and 9 <= current_time_hour <= 17:
+            self.current_state = NPCState.WORKING
+        else:
+            self.current_state = NPCState.RESTING
+
+    def minimal_update(self, current_time_hour, is_workday=True):
+        """
+        最簡化的 NPC 更新 - 用於遠距離 NPC\n
+        \n
+        只更新最基本的狀態，幾乎不消耗效能\n
+        \n
+        參數:\n
+        current_time_hour (int): 當前小時\n
+        is_workday (bool): 是否為工作日\n
+        """
+        if self.is_injured:
+            return
+
+        # 只更新狀態，不做任何移動或複雜計算
+        if is_workday and 9 <= current_time_hour <= 17:
+            self.current_state = NPCState.WORKING
+        else:
+            self.current_state = NPCState.RESTING
+
     def update(self, dt, current_time_hour, current_day=1, is_workday=True):
         """
         更新 NPC 狀態和行為\n

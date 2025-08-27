@@ -56,9 +56,6 @@ class LakeScene(Scene):
         self.current_fish = None
         self.fishing_spot = None
 
-        # 除錯模式
-        self.debug_mode = False
-
         print("湖泊場景已建立")
 
     def _create_lake(self):
@@ -437,11 +434,6 @@ class LakeScene(Scene):
         # 繪製 UI
         self._draw_ui(screen)
 
-        # 繪製除錯資訊
-        if self.debug_mode:
-            font = pygame.font.Font(None, 16)
-            self.wildlife_manager.draw_debug_info(screen, font, "lake")
-
     def _draw_lake(self, screen):
         """
         繪製湖水\n
@@ -635,15 +627,10 @@ class LakeScene(Scene):
                 self.state_manager.change_state(GameState.INVENTORY)
                 return True
 
-        # 檢查除錯模式切換和物品欄選擇
+        # 檢查物品欄選擇
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_d:
-                self.debug_mode = not self.debug_mode
-                print(f"除錯模式: {'開啟' if self.debug_mode else '關閉'}")
-                return True
-
             # 數字鍵選擇物品欄格子 (1-9, 0代表第10格)
-            elif pygame.K_1 <= event.key <= pygame.K_9:
+            if pygame.K_1 <= event.key <= pygame.K_9:
                 slot_index = event.key - pygame.K_1  # 1鍵對應索引0
                 self.player.select_slot(slot_index)
                 print(f"選擇物品欄格子 {slot_index + 1}")
