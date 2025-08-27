@@ -11,6 +11,10 @@ from src.scenes.lake_scene import LakeScene
 from src.scenes.home_scene import HomeScene
 from src.scenes.inventory_scene import InventoryScene
 from src.utils.font_manager import init_font_system
+from src.systems.time_system import TimeManager
+from src.utils.time_ui import TimeDisplayUI
+from src.systems.power_system import PowerManager
+from src.utils.power_ui import PowerDisplayUI
 
 
 ######################遊戲引擎######################
@@ -46,6 +50,18 @@ class GameEngine:
 
         # 建立時鐘物件，用於控制遊戲幀率
         self.clock = pygame.time.Clock()
+
+        # 建立時間管理系統
+        self.time_manager = TimeManager(time_scale=1.0)  # 正常時間流速
+
+        # 建立時間顯示 UI
+        self.time_display = TimeDisplayUI(position="top_right", style="compact")
+
+        # 建立電力管理系統
+        self.power_manager = PowerManager(time_manager=self.time_manager)
+
+        # 建立電力顯示 UI
+        self.power_display = PowerDisplayUI(self.power_manager)
 
         # 當前活躍的玩家實例（所有場景共享）
         self.current_player = None
@@ -85,8 +101,10 @@ class GameEngine:
             menu_scene = MenuScene(self.state_manager)
             self.scene_manager.register_scene("menu", menu_scene)
 
-            # 建立小鎮場景
-            town_scene = TownScene(self.state_manager)
+            # 建立小鎮場景，傳入時間管理器和電力管理器
+            town_scene = TownScene(
+                self.state_manager, self.time_manager, self.power_manager
+            )
             self.scene_manager.register_scene(SCENE_TOWN, town_scene)
 
             # 設定當前玩家為小鎮場景的玩家
@@ -181,6 +199,60 @@ class GameEngine:
                     self._toggle_fullscreen()
                     continue
 
+                elif event.key == pygame.K_F1:
+                    # F1 切換時間顯示風格
+                    self._toggle_time_display_style()
+                    continue
+
+                elif event.key == pygame.K_F2:
+                    # F2 切換時間流速
+                    self._cycle_time_scale()
+                    continue
+
+                elif event.key == pygame.K_F3:
+                    # F3 顯示時間系統除錯資訊
+                    self._show_time_debug_info()
+                    continue
+
+                elif event.key == pygame.K_F4:
+                    # F4 快進1小時
+                    self._advance_time_by_hours(1)
+                    continue
+
+                elif event.key == pygame.K_F5:
+                    # F5 快進6小時
+                    self._advance_time_by_hours(6)
+                    continue
+
+                elif event.key == pygame.K_F6:
+                    # F6 快進12小時（半天）
+                    self._advance_time_by_hours(12)
+                    continue
+
+                elif event.key == pygame.K_F7:
+                    # F7 快進24小時（一整天）
+                    self._advance_time_by_hours(24)
+                    continue
+
+                elif event.key == pygame.K_F8:
+                    # F8 重置為早上8點
+                    self._reset_time_to_morning()
+                    continue
+
+                elif event.key == pygame.K_F9:
+                    # F9 設定為晚上8點
+                    self._set_time_to_evening()
+                    continue
+
+                elif event.key == pygame.K_h:
+                    # H 顯示快捷鍵幫助
+                    self._show_hotkey_help()
+                    continue
+
+                # 電力系統快捷鍵處理
+                if self.state_manager.is_state(GameState.PLAYING):
+                    self.power_display.handle_key_input(event.key)
+
             # 讓當前場景處理事件
             event_handled = self.scene_manager.handle_event(event)
 
@@ -222,6 +294,15 @@ class GameEngine:
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
+        # 更新時間系統
+        self.time_manager.update(dt)
+
+        # 更新電力系統
+        self.power_manager.update(dt)
+
+        # 更新時間顯示 UI
+        self.time_display.update(dt)
+
         # 更新場景管理器
         self.scene_manager.update(dt)
 
@@ -241,11 +322,18 @@ class GameEngine:
         每幀調用一次，繪製所有視覺元素\n
         確保畫面更新順序正確\n
         """
-        # 清空螢幕為背景色
-        self.screen.fill(BACKGROUND_COLOR)
+        # 使用時間系統的天空顏色作為背景
+        sky_color = self.time_manager.get_sky_color()
+        self.screen.fill(sky_color)
 
         # 讓場景管理器繪製當前場景
         self.scene_manager.draw(self.screen)
+
+        # 繪製時間顯示 UI（在遊戲進行中才顯示）
+        if self.state_manager.is_state(GameState.PLAYING):
+            self.time_display.draw(self.screen, self.time_manager)
+            # 繪製電力系統 UI
+            self.power_display.draw(self.screen)
 
         # 根據遊戲狀態繪製額外的 UI
         if self.state_manager.is_state(GameState.PAUSED):
@@ -350,6 +438,161 @@ class GameEngine:
         float: 當前每秒幀數\n
         """
         return self.clock.get_fps()
+
+    def _toggle_time_display_style(self):
+        """
+        切換時間顯示風格\n
+        """
+        current_style = self.time_display.style
+        styles = ["compact", "detailed", "minimal"]
+        current_index = styles.index(current_style)
+        next_index = (current_index + 1) % len(styles)
+        new_style = styles[next_index]
+
+        self.time_display.set_style(new_style)
+        print(f"時間顯示風格已切換為: {new_style}")
+
+    def _cycle_time_scale(self):
+        """
+        循環切換時間流速\n
+        """
+        current_scale = self.time_manager.time_scale
+        scales = [0.5, 1.0, 2.0, 5.0, 10.0]
+
+        # 找到當前倍率在清單中的位置
+        try:
+            current_index = scales.index(current_scale)
+            next_index = (current_index + 1) % len(scales)
+        except ValueError:
+            # 如果當前倍率不在預設清單中，設為第一個
+            next_index = 0
+
+        new_scale = scales[next_index]
+        self.time_manager.set_time_scale(new_scale)
+        print(f"時間流速已調整為: {new_scale}x")
+
+    def _show_time_debug_info(self):
+        """
+        顯示時間系統除錯資訊\n
+        """
+        debug_info = self.time_manager.get_debug_info()
+        print("\n=== 時間系統除錯資訊 ===")
+        for key, value in debug_info.items():
+            print(f"{key}: {value}")
+        print("========================\n")
+
+    def _advance_time_by_hours(self, hours):
+        """
+        快進指定小時數\n
+        \n
+        參數:\n
+        hours (int): 要快進的小時數\n
+        """
+        if self.time_manager:
+            old_time = self.time_manager.get_time_string()
+
+            # 直接操作時間管理器的小時數
+            self.time_manager.hour += hours
+
+            # 處理跨日情況
+            while self.time_manager.hour >= 24:
+                self.time_manager.hour -= 24
+                self.time_manager.day += 1
+
+                # 處理星期循環
+                if self.time_manager.day > 7:
+                    self.time_manager.day = 1
+
+            # 觸發時間變化回調
+            self.time_manager.update_time_state()
+
+            new_time = self.time_manager.get_time_string()
+            print(f"時間快進：{old_time} -> {new_time} (+{hours}小時)")
+
+    def _reset_time_to_morning(self):
+        """
+        重置時間為早上8點\n
+        """
+        if self.time_manager:
+            old_time = self.time_manager.get_time_string()
+
+            self.time_manager.hour = 8
+            self.time_manager.minute = 0
+            self.time_manager.second = 0
+
+            # 觸發時間變化回調
+            self.time_manager.update_time_state()
+
+            new_time = self.time_manager.get_time_string()
+            print(f"時間重置為早晨：{old_time} -> {new_time}")
+
+    def _set_time_to_evening(self):
+        """
+        設定時間為晚上8點\n
+        """
+        if self.time_manager:
+            old_time = self.time_manager.get_time_string()
+
+            self.time_manager.hour = 20
+            self.time_manager.minute = 0
+            self.time_manager.second = 0
+
+            # 觸發時間變化回調
+            self.time_manager.update_time_state()
+
+            new_time = self.time_manager.get_time_string()
+            print(f"時間設定為夜晚：{old_time} -> {new_time}")
+
+    def _show_hotkey_help(self):
+        """
+        顯示所有快捷鍵幫助資訊\n
+        """
+        print("\n" + "=" * 60)
+        print("🎮 遊戲快捷鍵幫助")
+        print("=" * 60)
+
+        print("\n⏰ 時間系統控制：")
+        print("  F1  - 切換時間顯示風格")
+        print("  F2  - 切換時間流速")
+        print("  F3  - 顯示時間系統除錯資訊")
+        print("  F4  - 快進 1 小時")
+        print("  F5  - 快進 6 小時")
+        print("  F6  - 快進 12 小時（半天）")
+        print("  F7  - 快進 24 小時（一整天）")
+        print("  F8  - 重置為早上 8:00")
+        print("  F9  - 設定為晚上 8:00")
+
+        print("\n🔌 電力系統控制：")
+        print("  F10 - 切換電力詳細統計面板")
+        print("  F12 - 切換電力網格地圖")
+
+        print("\n🎯 遊戲控制：")
+        print("  ESC - 暫停/繼續遊戲")
+        print("  F11 - 切換全螢幕")
+        print("  H   - 顯示此幫助訊息")
+        print("  Tab - NPC 資訊/傷害測試")
+
+        print("\n🚶 玩家移動：")
+        print("  WASD 或 方向鍵 - 移動")
+        print("  E 或 空格鍵 - 互動")
+        print("  I - 打開物品欄")
+
+        print("\n💡 小提示：")
+        print("  - 可以傷害電力工人來測試停電機制")
+        print("  - 使用時間快進功能來測試日夜變化")
+        print("  - 電力網格地圖可以看到每個區域的電力狀態")
+        print("  - 觀察天空顏色隨時間變化")
+
+        print("=" * 60 + "\n")
+
+    def get_time_manager(self):
+        """
+        獲取時間管理器實例\n
+        \n
+        回傳:\n
+        TimeManager: 時間管理器實例\n
+        """
+        return self.time_manager
 
     def force_quit(self):
         """

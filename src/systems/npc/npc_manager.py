@@ -24,9 +24,12 @@ class NPCManager:
     - 生活軌跡：每個 NPC 都有合理的日常作息\n
     """
 
-    def __init__(self):
+    def __init__(self, time_manager=None):
         """
         初始化 NPC 管理器\n
+        \n
+        參數:\n
+        time_manager (TimeManager): 時間管理器實例，用於獲取當前時間和星期資訊\n
         """
         # NPC 容器
         self.town_npcs = []  # 小鎮 NPC (330個)
@@ -52,9 +55,8 @@ class NPCManager:
             "森林部落": None,
         }
 
-        # 時間系統
-        self.current_game_hour = 8  # 遊戲開始時間
-        self.time_scale = 1.0  # 時間流逝倍率
+        # 時間系統整合
+        self.time_manager = time_manager
 
         # 渲染優化
         self.render_distance = 300  # 只渲染這個距離內的 NPC
@@ -281,34 +283,35 @@ class NPCManager:
         dt (float): 時間間隔\n
         player_position (tuple): 玩家位置 (用於優化更新範圍)\n
         """
-        # 更新遊戲時間
-        self._update_game_time(dt)
+        # 獲取當前時間資訊
+        current_hour = 8  # 預設值
+        current_day = 1  # 預設值
+        is_workday = True  # 預設值
+
+        if self.time_manager:
+            current_hour = self.time_manager.hour
+            # 將 DayOfWeek enum 轉換為數字 (1-7)
+            day_mapping = {
+                "monday": 1,
+                "tuesday": 2,
+                "wednesday": 3,
+                "thursday": 4,
+                "friday": 5,
+                "saturday": 6,
+                "sunday": 7,
+            }
+            current_day = day_mapping.get(self.time_manager.day_of_week.value, 1)
+            is_workday = self.time_manager.is_work_day
 
         # 根據玩家位置決定更新哪些 NPC (效能優化)
         npcs_to_update = self._get_npcs_in_range(player_position, self.update_distance)
 
-        # 更新 NPC
+        # 更新 NPC，傳遞時間和星期資訊
         for npc in npcs_to_update:
-            npc.update(dt, self.current_game_hour)
+            npc.update(dt, current_hour, current_day, is_workday)
 
         # 更新電力系統
         self._update_power_system()
-
-    def _update_game_time(self, dt):
-        """
-        更新遊戲時間\n
-        \n
-        參數:\n
-        dt (float): 時間間隔\n
-        """
-        # 遊戲時間流逝比現實時間快
-        time_increment = dt * self.time_scale * 0.1  # 調整時間流逝速度
-        self.current_game_hour += time_increment
-
-        # 處理24小時循環
-        if self.current_game_hour >= 24:
-            self.current_game_hour -= 24
-            print("新的一天開始了！")
 
     def _update_power_system(self):
         """
@@ -486,8 +489,34 @@ class NPCManager:
             ),
             "powered_areas": sum(1 for area in self.power_areas if area["has_power"]),
             "total_areas": len(self.power_areas),
-            "current_hour": int(self.current_game_hour),
+            "current_hour": int(self.time_manager.hour) if self.time_manager else 8,
             "profession_counts": self.profession_assignments.copy(),
         }
 
         return stats
+
+    def get_power_workers(self):
+        """
+        取得所有電力系統員工 NPC\n
+        \n
+        回傳:\n
+        List[NPC]: 電力工人 NPC 列表\n
+        """
+        from .profession import Profession
+
+        power_workers = [
+            npc
+            for npc in self.all_npcs
+            if hasattr(npc, "profession") and npc.profession == Profession.POWER_WORKER
+        ]
+
+        return power_workers
+
+    def get_all_npcs(self):
+        """
+        取得所有 NPC\n
+        \n
+        回傳:\n
+        List[NPC]: 所有 NPC 列表\n
+        """
+        return self.all_npcs

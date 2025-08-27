@@ -19,7 +19,7 @@ class NPCState(Enum):
     RESTING = "休息中"  # 休息時間或下班時間
     MOVING = "移動中"  # 在不同地點間移動
     INJURED = "受傷住院"  # 在醫院接受治療
-    IDLE = "閒置中"  # 沒有特定任務的待機狀態
+    IDLE = "閒置中"  # 待機狀態
     SLEEPING = "睡覺中"  # 夜間睡眠時間
 
 
@@ -90,6 +90,10 @@ class NPC:
         # 特殊屬性
         self.assigned_area = None  # 電力工人的負責區域
         self.shop_id = None  # 商店員工的工作店鋪 ID
+
+        # 電力系統整合（電力工人專用）
+        self.power_manager = None  # 電力管理器引用
+        self.worker_id = None  # 在電力系統中的工人 ID
 
         print(f"創建 NPC: {self.name} ({self.profession.value})")
 
@@ -258,15 +262,19 @@ class NPC:
 
         return dialogues
 
-    def update(self, dt, current_time_hour):
+    def update(self, dt, current_time_hour, current_day=1, is_workday=True):
         """
         更新 NPC 狀態和行為\n
         \n
         參數:\n
         dt (float): 時間間隔 (秒)\n
         current_time_hour (int): 當前遊戲時間 (小時制)\n
+        current_day (int): 當前星期幾 (1-7，1是星期一)\n
+        is_workday (bool): 是否為工作日 (星期六日為工作日，一到五為休息日)\n
         """
         self.current_hour = current_time_hour
+        self.current_day = current_day
+        self.is_workday = is_workday
 
         # 更新健康狀態
         self._update_health_status(dt)
@@ -276,7 +284,7 @@ class NPC:
             self.state = NPCState.INJURED
             return
 
-        # 根據時間表決定當前應該做什麼
+        # 根據時間表和星期決定當前應該做什麼
         self._update_daily_schedule()
 
         # 根據當前狀態執行對應行為
@@ -302,28 +310,52 @@ class NPC:
                 self.hospital_stay_time = 0
                 self.injury_cause = None
                 self.state = NPCState.IDLE
+
+                # 如果是電力工人，通知電力系統工人復工
+                if (
+                    self.profession == Profession.POWER_WORKER
+                    and self.power_manager
+                    and self.worker_id
+                ):
+                    self.power_manager.update_worker_status(self.worker_id, True)
+
                 print(f"{self.name} 康復出院了")
 
     def _update_daily_schedule(self):
         """
-        根據時間表更新 NPC 的行為狀態\n
+        根據時間表和星期更新 NPC 的行為狀態\n
+        \n
+        包含工作日/休息日邏輯：\n
+        - 工作日 (星期六、日)：按照職業時間表工作\n
+        - 休息日 (星期一到五)：到處亂晃，不工作\n
         """
         if self.is_injured:
             return
 
+        # 睡覺時間 (凌晨和深夜)
+        if self.current_hour < 6 or self.current_hour >= 22:
+            if self.state != NPCState.SLEEPING:
+                self.state = NPCState.SLEEPING
+                self._set_target_position(self.home_position)
+            return
+
+        # 休息日邏輯 (星期一到五)
+        if not self.is_workday:
+            # 休息日時 NPC 到處亂晃，不工作
+            if self.state not in [NPCState.IDLE, NPCState.MOVING]:
+                self.state = NPCState.IDLE
+                # 設定一個隨機的閒逛目標
+                self._set_random_wander_target()
+            return
+
+        # 工作日邏輯 (星期六、日)
         work_start = self.schedule.get("work_start", 9)
         work_end = self.schedule.get("work_end", 17)
         break_start = self.schedule.get("break_start")
         break_end = self.schedule.get("break_end")
 
         # 判斷當前應該處於什麼狀態
-        if self.current_hour < 6 or self.current_hour >= 22:
-            # 睡覺時間
-            if self.state != NPCState.SLEEPING:
-                self.state = NPCState.SLEEPING
-                self._set_target_position(self.home_position)
-
-        elif work_start <= self.current_hour < work_end:
+        if work_start <= self.current_hour < work_end:
             # 工作時間
             if break_start and break_start <= self.current_hour < break_end:
                 # 休息時間
@@ -334,7 +366,6 @@ class NPC:
                 if self.state != NPCState.WORKING:
                     self.state = NPCState.WORKING
                     self._go_to_workplace()
-
         else:
             # 下班時間
             if self.state not in [NPCState.RESTING, NPCState.IDLE]:
@@ -501,6 +532,32 @@ class NPC:
         if not self._is_at_target():
             self.state = NPCState.MOVING
 
+    def _set_random_wander_target(self):
+        """
+        設定隨機閒逛目標 - 用於休息日時的亂晃行為\n
+        \n
+        在家附近隨機選擇一個點作為閒逛目標\n
+        確保 NPC 在休息日有自然的移動模式\n
+        """
+        # 在家附近隨機選擇一個點作為閒逛目標
+        wander_radius = 150  # 閒逛半徑
+
+        # 從家的位置開始，在附近隨機選擇目標
+        home_x, home_y = self.home_position
+
+        # 使用極座標生成隨機點，確保分布均勻
+        angle = random.uniform(0, 2 * math.pi)
+        radius = random.uniform(20, wander_radius)  # 最少離家20像素
+
+        target_x = home_x + radius * math.cos(angle)
+        target_y = home_y + radius * math.sin(angle)
+
+        # 確保目標在合理範圍內 (不超出地圖邊界)
+        target_x = max(50, min(target_x, 950))  # 假設地圖寬度1000
+        target_y = max(50, min(target_y, 650))  # 假設地圖高度700
+
+        self._set_target_position((target_x, target_y))
+
     def _go_to_workplace(self):
         """
         前往工作場所\n
@@ -561,6 +618,15 @@ class NPC:
             self.hospital_stay_time = 24  # 住院24小時
             self.injury_cause = cause
             self.state = NPCState.INJURED
+
+            # 如果是電力工人，通知電力系統工人離線
+            if (
+                self.profession == Profession.POWER_WORKER
+                and self.power_manager
+                and self.worker_id
+            ):
+                self.power_manager.update_worker_status(self.worker_id, False)
+
             print(f"{self.name} 因為 {cause} 而受傷住院")
 
     def get_dialogue(self):

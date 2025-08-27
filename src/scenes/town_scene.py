@@ -8,6 +8,8 @@ from src.player.player import Player
 from src.player.input_controller import InputController
 from src.utils.font_manager import get_font_manager
 from src.systems.npc.npc_manager import NPCManager
+from src.systems.road_system import RoadManager
+from src.systems.vehicle_system import VehicleManager
 from config.settings import *
 
 
@@ -24,15 +26,19 @@ class TownScene(Scene):
     - 各種 NPC 和設施\n
     """
 
-    def __init__(self, state_manager):
+    def __init__(self, state_manager, time_manager=None, power_manager=None):
         """
         初始化大型小鎮場景\n
         \n
         參數:\n
         state_manager (StateManager): 遊戲狀態管理器\n
+        time_manager (TimeManager): 時間管理器，用於 NPC 行為控制\n
+        power_manager (PowerManager): 電力管理器，用於區域電力控制\n
         """
         super().__init__("小鎮")
         self.state_manager = state_manager
+        self.time_manager = time_manager
+        self.power_manager = power_manager
 
         # 取得字體管理器
         self.font_manager = get_font_manager()
@@ -54,8 +60,14 @@ class TownScene(Scene):
         self._generate_buildings()
         self._create_scene_transitions()
 
-        # 建立 NPC 管理器
-        self.npc_manager = NPCManager()
+        # 建立 NPC 管理器，傳入時間管理器
+        self.npc_manager = NPCManager(self.time_manager)
+
+        # 建立道路管理器
+        self.road_manager = RoadManager()
+
+        # 建立載具管理器
+        self.vehicle_manager = VehicleManager()
 
         # 定義小鎮邊界 (扣除城牆)
         town_bounds = (
@@ -66,13 +78,59 @@ class TownScene(Scene):
         )
         forest_bounds = (0, 0, SCREEN_WIDTH * 8, SCREEN_HEIGHT * 8)
 
+        # 初始化道路網絡
+        self.road_manager.create_road_network_for_town(town_bounds)
+
+        # 初始化載具生成點
+        self._setup_vehicle_spawns(town_bounds)
+
+        # 初始化電力網格（如果有電力管理器）
+        if self.power_manager:
+            self.power_manager.initialize_power_grid(town_bounds)
+
         # 初始化所有 NPC
         self.npc_manager.initialize_npcs(town_bounds, forest_bounds)
+
+        # 將電力工人註冊到電力系統
+        if self.power_manager:
+            self._register_power_workers()
+
+        # 生成初始載具
+        self.vehicle_manager.spawn_initial_vehicles()
 
         # NPC 資訊顯示控制
         self.show_npc_info = False
 
         print("大型小鎮場景已建立 (30x30 街道)")
+
+    def _setup_vehicle_spawns(self, town_bounds):
+        """
+        設置載具生成點\n
+        \n
+        參數:\n
+        town_bounds (tuple): 小鎮邊界\n
+        """
+        # 在地圖邊緣創建 AI 載具生成點
+        self.vehicle_manager.create_map_edge_spawns(town_bounds)
+
+        # 在小鎮內創建玩家載具停車點
+        tx, ty, tw, th = town_bounds
+
+        # 在各個街區附近創建停車位
+        for i in range(10):  # 創建10個停車位
+            # 隨機選擇一個街區
+            block = random.choice(self.street_blocks)
+
+            # 在街區邊緣創建停車位
+            park_x = block["rect"].x + block["rect"].width + 10
+            park_y = block["rect"].y + random.randint(0, block["rect"].height - 30)
+
+            # 確保停車位在小鎮範圍內
+            if park_x < tx + tw - 50 and park_y < ty + th - 50:
+                vehicle_types = ["car", "bike", "motorcycle"]  # 玩家可用的載具類型
+                self.vehicle_manager.add_spawn_point(
+                    (park_x, park_y), vehicle_types, is_ai_spawn=False
+                )
 
     def _generate_town_layout(self):
         """
@@ -566,6 +624,22 @@ class TownScene(Scene):
         # 更新攝影機位置
         self._update_camera()
 
+        # 更新道路系統（交通號誌）
+        self.road_manager.update(dt)
+
+        # 更新載具系統
+        # 獲取當前駕駛的載具
+        current_vehicle = self.vehicle_manager.get_player_vehicle(self.player)
+        pedestrians = self.npc_manager.get_all_npcs()  # NPC 當作行人
+
+        self.vehicle_manager.update(
+            dt,
+            self.input_controller,
+            self.player if current_vehicle else None,
+            self.road_manager,
+            pedestrians,
+        )
+
         # 更新 NPC 系統
         player_position = self.player.get_center_position()
         self.npc_manager.update(dt, player_position)
@@ -770,11 +844,17 @@ class TownScene(Scene):
         # 繪製城牆
         self._draw_walls(screen, visible_rect)
 
-        # 繪製道路網格
+        # 繪製道路網格（舊的簡單街道）
         self._draw_streets(screen, visible_rect)
+
+        # 繪製新的道路系統（人行道、斑馬線、交通號誌）
+        self._draw_road_system(screen, visible_rect)
 
         # 繪製建築物
         self._draw_buildings(screen, visible_rect)
+
+        # 繪製載具系統
+        self._draw_vehicles(screen, visible_rect)
 
         # 繪製場景切換區域（城門）
         self._draw_scene_transitions(screen, visible_rect)
@@ -1039,6 +1119,46 @@ class TownScene(Scene):
         )
         screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
 
+        # 應用時間系統的視覺效果（天空顏色和光線遮罩）
+        self._apply_time_visual_effects(screen)
+
+    def _apply_time_visual_effects(self, screen):
+        """
+        應用時間系統的視覺效果 - 天空顏色和光線遮罩\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        """
+        # 獲取當前的環境光強度和天空顏色
+        ambient_light = self.time_manager.ambient_light
+        sky_color = self.time_manager.sky_color
+
+        # 創建光線遮罩（根據環境光強度調整不透明度）
+        # 環境光越暗，遮罩越不透明
+        overlay_alpha = int((1.0 - ambient_light) * 180)  # 最大180透明度
+
+        if overlay_alpha > 0:
+            # 創建半透明遮罩
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            overlay.set_alpha(overlay_alpha)
+
+            # 使用深藍色作為夜晚遮罩
+            if ambient_light < 0.5:  # 夜晚或黃昏
+                overlay.fill((20, 20, 80))  # 深藍色
+            else:  # 黎明或傍晚
+                overlay.fill((40, 30, 60))  # 紫藍色
+
+            # 應用遮罩
+            screen.blit(overlay, (0, 0))
+
+        # 在畫面上方顯示天空顏色帶（可選）
+        if sky_color != (135, 206, 235):  # 不是預設的天空藍
+            sky_rect = pygame.Rect(0, 0, SCREEN_WIDTH, 30)
+            sky_surface = pygame.Surface((SCREEN_WIDTH, 30))
+            sky_surface.fill(sky_color)
+            sky_surface.set_alpha(100)  # 半透明
+            screen.blit(sky_surface, sky_rect)
+
     def handle_event(self, event):
         """
         處理小鎮場景輸入事件\n
@@ -1058,6 +1178,9 @@ class TownScene(Scene):
                 # Tab 鍵切換 NPC 資訊顯示
                 self.show_npc_info = not self.show_npc_info
                 return True
+            elif event.key == pygame.K_e:
+                # E 鍵與載具互動
+                return self._handle_vehicle_interaction()
             elif event.key == pygame.K_F1:
                 # F1 鍵測試隨機 NPC 受傷 (用於測試電力系統)
                 injured_npc = self.npc_manager.injure_random_npc("測試意外")
@@ -1090,3 +1213,129 @@ class TownScene(Scene):
         Player: 玩家角色物件\n
         """
         return self.player
+
+    def _register_power_workers(self):
+        """
+        將 NPC 管理器中的電力工人註冊到電力管理系統\n
+        \n
+        遍歷所有電力工人 NPC，將他們註冊到電力管理器\n
+        建立電力工人與電力區域的對應關係\n
+        """
+        if not self.power_manager:
+            return
+
+        # 從 NPC 管理器取得所有電力工人
+        power_workers = self.npc_manager.get_power_workers()
+
+        for worker_npc in power_workers:
+            worker_id = f"power_worker_{worker_npc.id}"
+            worker_info = {
+                "npc": worker_npc,
+                "skill_level": 1,  # 預設技能等級
+            }
+
+            # 註冊到電力管理系統
+            self.power_manager.register_power_worker(worker_id, worker_info)
+
+            # 為 NPC 建立與電力系統的連結
+            worker_npc.power_manager = self.power_manager
+            worker_npc.worker_id = worker_id
+
+        print(f"已註冊 {len(power_workers)} 個電力工人到電力系統")
+
+    def _draw_road_system(self, screen, visible_rect):
+        """
+        繪製道路系統（人行道、斑馬線、交通號誌）\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        visible_rect (pygame.Rect): 可見區域\n
+        """
+        # 創建一個臨時表面來繪製道路系統
+        temp_surface = pygame.Surface((TOWN_TOTAL_WIDTH, TOWN_TOTAL_HEIGHT))
+        temp_surface.fill((0, 255, 0))  # 綠色背景（透明色鍵）
+        temp_surface.set_colorkey((0, 255, 0))  # 設定透明色鍵
+
+        # 在臨時表面上繪製道路網絡
+        self.road_manager.draw_road_network(temp_surface)
+
+        # 計算要繪製的區域
+        source_rect = pygame.Rect(
+            visible_rect.x,
+            visible_rect.y,
+            min(visible_rect.width, TOWN_TOTAL_WIDTH - visible_rect.x),
+            min(visible_rect.height, TOWN_TOTAL_HEIGHT - visible_rect.y),
+        )
+
+        # 確保座標不超出邊界
+        if source_rect.x < TOWN_TOTAL_WIDTH and source_rect.y < TOWN_TOTAL_HEIGHT:
+            screen.blit(temp_surface, (0, 0), source_rect)
+
+    def _draw_vehicles(self, screen, visible_rect):
+        """
+        繪製載具系統\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        visible_rect (pygame.Rect): 可見區域\n
+        """
+        # 繪製所有載具
+        for vehicle in self.vehicle_manager.vehicles:
+            # 檢查載具是否在可見範圍內
+            vehicle_screen_x = vehicle.x - self.camera_x
+            vehicle_screen_y = vehicle.y - self.camera_y
+
+            # 只繪製在螢幕範圍內的載具
+            if (
+                -50 <= vehicle_screen_x <= SCREEN_WIDTH + 50
+                and -50 <= vehicle_screen_y <= SCREEN_HEIGHT + 50
+            ):
+
+                # 暫時調整載具位置來繪製
+                original_rect = vehicle.rect.copy()
+                vehicle.rect.x = vehicle_screen_x
+                vehicle.rect.y = vehicle_screen_y
+                vehicle.x = vehicle_screen_x
+                vehicle.y = vehicle_screen_y
+
+                # 繪製載具
+                vehicle.draw(screen)
+
+                # 恢復原始位置
+                vehicle.rect = original_rect
+                vehicle.x = original_rect.x
+                vehicle.y = original_rect.y
+
+    def _handle_vehicle_interaction(self):
+        """
+        處理載具互動\n
+        \n
+        回傳:\n
+        bool: True 表示事件已處理\n
+        """
+        player_position = (self.player.x, self.player.y)
+
+        # 檢查玩家是否已經在載具中
+        current_vehicle = self.vehicle_manager.get_player_vehicle(self.player)
+
+        if current_vehicle:
+            # 玩家已經在載具中，執行下車
+            exit_position = current_vehicle.get_off()
+            self.player.set_position(exit_position)
+            print(f"從 {current_vehicle.name} 下車")
+            return True
+        else:
+            # 玩家不在載具中，尋找附近的載具
+            nearby_vehicle = self.vehicle_manager.get_nearby_vehicle(player_position)
+
+            if nearby_vehicle and nearby_vehicle.can_interact(player_position):
+                # 嘗試上車
+                if nearby_vehicle.get_on(self.player):
+                    print(f"上了 {nearby_vehicle.name}")
+                    return True
+                else:
+                    print(f"{nearby_vehicle.name} 已被占用")
+                    return True
+            else:
+                print("附近沒有可用的載具")
+                return False

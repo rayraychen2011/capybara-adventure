@@ -258,6 +258,17 @@ VEHICLE_WIDTH = 64
 # 載具尺寸 - 高度
 VEHICLE_HEIGHT = 32
 
+# 載具顏色
+CAR_COLOR = (255, 0, 0)  # 紅色汽車
+BIKE_COLOR = (0, 150, 0)  # 綠色自行車
+TRUCK_COLOR = (139, 69, 19)  # 棕色卡車
+BUS_COLOR = (0, 100, 200)  # 藍色公車
+
+# AI 載具生成設定
+MAX_AI_VEHICLES = 20  # 最大 AI 載具數量
+AI_SPAWN_INTERVAL = 5.0  # AI 載具生成間隔（秒）
+AI_DESPAWN_DISTANCE = 200  # AI 載具消失距離
+
 ######################字體設定######################
 # 預設字體大小
 DEFAULT_FONT_SIZE = 24
