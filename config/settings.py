@@ -49,6 +49,11 @@ WALL_COLOR = (101, 67, 33)  # 城牆顏色 - 深棕色
 CAMERA_START_X = TOWN_TOTAL_WIDTH // 2 - SCREEN_WIDTH // 2
 CAMERA_START_Y = TOWN_TOTAL_HEIGHT // 2 - SCREEN_HEIGHT // 2
 
+######################世界座標系統設定######################
+# 家的位置作為世界原點 (0, 0)
+HOME_WORLD_X = TOWN_TOTAL_WIDTH // 2
+HOME_WORLD_Y = TOWN_TOTAL_HEIGHT // 2
+
 ######################色彩定義######################
 # 背景色彩 - 天空藍
 BACKGROUND_COLOR = (135, 206, 235)
@@ -120,8 +125,11 @@ LAKE_MAP_HEIGHT = TOWN_MAP_HEIGHT * 10
 # 初始金錢數量
 INITIAL_MONEY = 1000
 
-# 背包初始容量
-INVENTORY_CAPACITY = 20
+# 物品欄設定（替代背包系統）
+ITEM_BAR_SLOTS = 10  # 物品欄格子數量
+ITEM_BAR_HEIGHT = 60  # 物品欄高度
+ITEM_BAR_SLOT_SIZE = 50  # 每個格子的大小
+ITEM_BAR_PADDING = 5  # 格子間的間距
 
 # 自動存檔間隔時間，單位為秒
 AUTO_SAVE_INTERVAL = 300
@@ -151,12 +159,6 @@ GUN_SHOP_COUNT = 10  # 槍械店數量
 # 醫院數量
 HOSPITAL_COUNT = 5
 
-# 警察局數量 (都在醫院旁邊)
-POLICE_STATION_COUNT = 5
-
-# 取回背包的費用
-BACKPACK_RETRIEVAL_COST = 200
-
 # 玩家初始生命值
 PLAYER_MAX_HEALTH = 100
 PLAYER_INITIAL_HEALTH = 100
@@ -178,7 +180,6 @@ MARKET_COUNT = 2  # 市場數量 (增加)
 
 # 醫療建築
 HOSPITAL_COUNT = 8  # 醫院數量 (增加)
-POLICE_STATION_COUNT = 8  # 警察局數量 (增加)
 
 # 教育和娛樂建築
 SCHOOL_COUNT = 6  # 學校數量 (增加)
@@ -228,10 +229,6 @@ CAR_COLOR = (255, 0, 0)  # 汽車 - 紅色
 BIKE_COLOR = (0, 255, 0)  # 自行車 - 綠色
 
 ######################法律系統設定######################
-# 保育類動物獵殺的法律後果
-PROTECTED_ANIMAL_FINE = 1000  # 保育類動物罰金
-POLICE_RESPONSE_TIME = 60.0  # 林地警察反應時間 (秒)
-
 # 危險區域設定
 WATER_DANGER_TIME = 60.0  # 在水中停留多久會被食人魚攻擊 (秒)
 

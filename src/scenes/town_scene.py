@@ -155,13 +155,6 @@ class TownScene(Scene):
                 "priority": 2,
             },
             {
-                "name": "警察局",
-                "type": "police_station",
-                "color": (70, 130, 180),
-                "count": POLICE_STATION_COUNT,
-                "priority": 2,
-            },
-            {
                 "name": "槍械店",
                 "type": "gun_shop",
                 "color": (105, 105, 105),
@@ -428,7 +421,6 @@ class TownScene(Scene):
                 "clothing_store": "服裝店",
                 "tavern": "酒館",
                 "hospital": "醫院",
-                "police_station": "警察局",
                 "gun_shop": "槍械店",
                 "bank": "銀行",
                 "school": "學校",
@@ -733,7 +725,6 @@ class TownScene(Scene):
             "clothing_store": "服裝店：我們有最時尚的服裝！",
             "tavern": "酒館：來杯飲料休息一下吧！",
             "hospital": "醫院：需要醫療服務嗎？",
-            "police_station": "警察局：有什麼案件要報告嗎？",
             "gun_shop": "槍械店：合法的武器在這裡！",
             "bank": "銀行：您需要金融服務嗎？",
             "school": "學校：知識改變命運！",
@@ -1017,14 +1008,12 @@ class TownScene(Scene):
         )
         screen.blit(money_text, (10, 10))
 
-        # 顯示背包使用情況
-        inventory = self.player.get_inventory_list()
-        item_count = sum(inventory.values())
-        capacity = self.player.inventory_capacity
-        inventory_text = self.font_manager.render_text(
-            f"背包: {item_count}/{capacity}", DEFAULT_FONT_SIZE, (0, 0, 0)
+        # 顯示座標（以家為原點）
+        relative_x, relative_y = self.player.get_relative_position()
+        coord_text = self.font_manager.render_text(
+            f"座標: ({relative_x}, {relative_y})", DEFAULT_FONT_SIZE, (0, 0, 0)
         )
-        screen.blit(inventory_text, (10, 35))
+        screen.blit(coord_text, (10, 35))
 
         # 顯示 NPC 系統統計
         stats = self.npc_manager.get_statistics()
@@ -1039,13 +1028,16 @@ class TownScene(Scene):
         font = pygame.font.Font(None, 20)
         self.npc_manager.draw_power_grid_status(screen, font)
 
+        # 繪製物品欄（畫面底下）
+        self.player.draw_item_bar(screen)
+
         # 顯示操作提示
         hint_text = self.font_manager.render_text(
-            "E: 互動 | I: 背包 | Tab: NPC資訊 | F1: 測試傷害 | 走到邊界切換場景 (回家可傳送)",
+            "E: 互動 | 1-0: 選擇物品欄 | Tab: NPC資訊 | F1: 測試傷害 | 走到邊界切換場景",
             DEFAULT_FONT_SIZE,
             (0, 0, 0),
         )
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 30))
+        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
 
     def handle_event(self, event):
         """
@@ -1073,10 +1065,20 @@ class TownScene(Scene):
                     print(f"測試: {injured_npc.name} 受傷住院")
                 return True
 
-        if action:
-            if action == "inventory":
-                self.state_manager.change_state(GameState.INVENTORY)
+            # 數字鍵選擇物品欄格子 (1-9, 0代表第10格)
+            elif pygame.K_1 <= event.key <= pygame.K_9:
+                slot_index = event.key - pygame.K_1  # 1鍵對應索引0
+                self.player.select_slot(slot_index)
+                print(f"選擇物品欄格子 {slot_index + 1}")
                 return True
+            elif event.key == pygame.K_0:
+                self.player.select_slot(9)  # 0鍵對應第10格（索引9）
+                print("選擇物品欄格子 10")
+                return True
+
+        if action:
+            # 移除原本的背包系統
+            pass
 
         return False
 

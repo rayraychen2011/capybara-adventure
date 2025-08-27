@@ -586,22 +586,32 @@ class LakeScene(Scene):
         )
         screen.blit(money_text, (10, 10))
 
+        # 顯示座標（以家為原點）
+        relative_x, relative_y = self.player.get_relative_position()
+        coord_text = font.render(
+            f"座標: ({relative_x}, {relative_y})", True, (255, 255, 255)
+        )
+        screen.blit(coord_text, (10, 35))
+
         # 顯示魚類數量（統計背包中的魚）
         animals = self.wildlife_manager.get_animals_in_scene("lake")
         fish_count = len([animal for animal in animals if animal.is_alive])
 
         fish_text = font.render(f"魚類: {fish_count}", True, (255, 255, 255))
-        screen.blit(fish_text, (10, 35))
+        screen.blit(fish_text, (10, 60))
+
+        # 繪製物品欄（畫面底下）
+        self.player.draw_item_bar(screen)
 
         # 顯示操作提示
         if not self.fishing_mode:
             hint_text = font.render(
-                "E: 收集 | F: 釣魚 | I: 背包 | D: 除錯", True, (255, 255, 255)
+                "E: 收集 | F: 釣魚 | 1-0: 選擇物品欄 | D: 除錯", True, (255, 255, 255)
             )
         else:
             hint_text = font.render("釣魚中，請等待...", True, (255, 255, 0))
 
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 30))
+        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
 
     def handle_event(self, event):
         """
@@ -625,11 +635,22 @@ class LakeScene(Scene):
                 self.state_manager.change_state(GameState.INVENTORY)
                 return True
 
-        # 檢查除錯模式切換
+        # 檢查除錯模式切換和物品欄選擇
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 self.debug_mode = not self.debug_mode
                 print(f"除錯模式: {'開啟' if self.debug_mode else '關閉'}")
+                return True
+
+            # 數字鍵選擇物品欄格子 (1-9, 0代表第10格)
+            elif pygame.K_1 <= event.key <= pygame.K_9:
+                slot_index = event.key - pygame.K_1  # 1鍵對應索引0
+                self.player.select_slot(slot_index)
+                print(f"選擇物品欄格子 {slot_index + 1}")
+                return True
+            elif event.key == pygame.K_0:
+                self.player.select_slot(9)  # 0鍵對應第10格（索引9）
+                print("選擇物品欄格子 10")
                 return True
 
         return False

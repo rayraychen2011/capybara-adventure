@@ -58,12 +58,6 @@ class Building:
             self.services = ["治療", "重生點"]
             self.staff_count = 10  # 1醫生 + 8護士 + 1管理員
 
-        elif self.building_type == "police_station":
-            self.name = "警察局"
-            self.color = (0, 0, 255)  # 藍色
-            self.services = ["取回背包", "報案"]
-            self.staff_count = 5
-
         elif self.building_type == "convenience_store":
             self.name = "便利商店"
             self.color = (255, 215, 0)  # 金色
@@ -400,87 +394,7 @@ class Hospital(Building):
 
         print(f"玩家在 {self.name} 重生")
 
-        return {"success": True, "message": "您已在醫院重生，請前往警察局取回您的物品"}
-
-
-######################警察局######################
-class PoliceStation(Building):
-    """
-    警察局 - 法律執行和物品回收\n
-    \n
-    玩家死亡後物品的保管地點\n
-    提供背包回收服務，費用200元\n
-    根據規格書要求，5座警察局都在醫院旁邊\n
-    """
-
-    def __init__(self, position, size=(100, 80)):
-        """
-        初始化警察局\n
-        \n
-        參數:\n
-        position (tuple): 位置 (x, y)\n
-        size (tuple): 尺寸 (width, height)\n
-        """
-        super().__init__("police_station", position, size)
-
-        # 物品保管
-        self.lost_items = {}  # 玩家ID -> 物品列表
-        self.retrieval_cost = BACKPACK_RETRIEVAL_COST
-
-    def store_player_items(self, player_id, items):
-        """
-        保管玩家物品\n
-        \n
-        參數:\n
-        player_id (str): 玩家ID\n
-        items (dict): 物品列表\n
-        """
-        self.lost_items[player_id] = {
-            "items": items.copy(),
-            "timestamp": pygame.time.get_ticks(),
-        }
-
-        print(f"警察局保管了玩家 {player_id} 的物品")
-
-    def retrieve_items(self, player):
-        """
-        取回物品\n
-        \n
-        參數:\n
-        player (Player): 玩家物件\n
-        \n
-        回傳:\n
-        dict: 取回結果\n
-        """
-        player_id = id(player)  # 使用物件ID作為玩家識別
-
-        if player_id not in self.lost_items:
-            return {"success": False, "message": "沒有您的物品記錄"}
-
-        if player.get_money() < self.retrieval_cost:
-            return {
-                "success": False,
-                "message": f"需要 ${self.retrieval_cost} 才能取回物品",
-            }
-
-        # 扣除費用
-        player.spend_money(self.retrieval_cost)
-
-        # 歸還物品
-        lost_record = self.lost_items[player_id]
-        items = lost_record["items"]
-
-        for item_name, quantity in items.items():
-            player.add_item(item_name, quantity)
-
-        # 移除記錄
-        del self.lost_items[player_id]
-
-        return {
-            "success": True,
-            "items": items,
-            "message": f"已支付 ${self.retrieval_cost} 取回物品",
-        }
+        return {"success": True, "message": "您已在醫院重生"}
 
 
 ######################建築管理器######################
@@ -503,7 +417,6 @@ class BuildingManager:
         self.building_counts = {
             "gun_shop": 0,
             "hospital": 0,
-            "police_station": 0,
             "convenience_store": 0,
             "church": 0,
             "fishing_shop": 0,
@@ -525,9 +438,6 @@ class BuildingManager:
 
         # 創建醫院 (5座)
         self._create_hospitals(town_bounds)
-
-        # 創建警察局 (5座，在醫院旁邊)
-        self._create_police_stations()
 
         # 創建槍械店 (10座)
         self._create_gun_shops(town_bounds)
@@ -556,23 +466,6 @@ class BuildingManager:
 
             hospital = Hospital((x, y))
             self._add_building(hospital)
-
-    def _create_police_stations(self):
-        """
-        創建警察局 (在醫院旁邊)\n
-        """
-        hospitals = self.buildings_by_type.get("hospital", [])
-
-        for i, hospital in enumerate(hospitals):
-            if i >= POLICE_STATION_COUNT:
-                break
-
-            # 在醫院旁邊創建警察局
-            police_x = hospital.x + hospital.width + 20
-            police_y = hospital.y
-
-            police_station = PoliceStation((police_x, police_y))
-            self._add_building(police_station)
 
     def _create_gun_shops(self, town_bounds):
         """

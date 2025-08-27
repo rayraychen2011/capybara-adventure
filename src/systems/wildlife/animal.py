@@ -494,16 +494,9 @@ class Animal:
 
         print(f"{self.animal_type.value} 死亡了")
 
-        # 檢查是否為保育類動物
+        # 保育類動物死亡的警告（僅顯示訊息，不觸發警察系統）
         if self.is_protected:
-            # 觸發林地警察系統
-            response_time = AnimalData.get_police_response_time(self.animal_type)
-            print(
-                f"警告：獵殺保育類動物 {self.animal_type.value}！林地警察將在 {response_time} 秒內到達！"
-            )
-
-            # 這裡應該觸發警察系統 (之後實作)
-            # self.trigger_police_response(response_time)
+            print(f"警告：{self.animal_type.value} 是保育類動物！")
 
     def get_position(self):
         """

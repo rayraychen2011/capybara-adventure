@@ -49,7 +49,6 @@ class WildlifeManager:
 
         # 保育系統
         self.protected_kills = []  # 保育類動物擊殺記錄
-        self.police_responses = []  # 林地警察回應列表
 
         # 統計資料
         self.total_spawned = 0  # 總生成數量
@@ -197,9 +196,6 @@ class WildlifeManager:
 
         # 嘗試生成新動物
         self._attempt_spawn_animals(current_scene)
-
-        # 更新林地警察系統
-        self._update_police_responses(dt)
 
     def _attempt_spawn_animals(self, current_scene):
         """
@@ -494,68 +490,6 @@ class WildlifeManager:
         }
         self.protected_kills.append(kill_record)
 
-        # 計算林地警察反應時間
-        response_time = AnimalData.get_police_response_time(animal.animal_type)
-
-        # 添加警察回應事件
-        police_event = {
-            "trigger_time": time.time(),
-            "response_time": response_time,
-            "location": animal.get_position(),
-            "animal_type": animal.animal_type,
-            "active": True,
-        }
-        self.police_responses.append(police_event)
-
-        print(
-            f"觸發保育系統：{animal.animal_type.value} 被殺，警察將在 {response_time} 秒後到達"
-        )
-
-    def _update_police_responses(self, dt):
-        """
-        更新林地警察回應系統\n
-        \n
-        參數:\n
-        dt (float): 時間間隔\n
-        """
-        current_time = time.time()
-
-        for response in self.police_responses[:]:  # 使用切片複製
-            if not response["active"]:
-                continue
-
-            # 檢查是否到了警察到達時間
-            elapsed = current_time - response["trigger_time"]
-            if elapsed >= response["response_time"]:
-                # 警察到達，執行懲罰
-                self._execute_police_penalty(response)
-                response["active"] = False
-
-        # 清理過期的回應事件
-        self.police_responses = [
-            r for r in self.police_responses if current_time - r["trigger_time"] < 300
-        ]  # 保留5分鐘內的事件
-
-    def _execute_police_penalty(self, police_event):
-        """
-        執行林地警察懲罰\n
-        \n
-        參數:\n
-        police_event (dict): 警察事件資料\n
-        """
-        animal_type = police_event["animal_type"]
-        penalty_fine = AnimalData.get_fine_amount(animal_type)
-
-        print(f"林地警察到達！對獵殺 {animal_type.value} 開出 ${penalty_fine} 罰單！")
-
-        # 這裡應該整合玩家金錢系統
-        # player.deduct_money(penalty_fine)
-
-        # 還可以添加其他懲罰：
-        # - 暫時禁止狩獵
-        # - 增加罪惡值
-        # - 觸發追捕事件
-
     def get_statistics(self):
         """
         獲取野生動物統計資料\n
@@ -570,9 +504,6 @@ class WildlifeManager:
             "forest_animals": len(self.forest_animals),
             "lake_animals": len(self.lake_animals),
             "protected_kills": len(self.protected_kills),
-            "active_police_responses": len(
-                [r for r in self.police_responses if r["active"]]
-            ),
         }
 
     def draw_all_animals(self, screen, scene_name):
@@ -608,7 +539,6 @@ class WildlifeManager:
             f"總狩獵: {stats['total_hunted']}",
             f"總釣魚: {stats['total_fished']}",
             f"保育類擊殺: {stats['protected_kills']}",
-            f"警察回應: {stats['active_police_responses']}",
         ]
 
         for text in info_texts:

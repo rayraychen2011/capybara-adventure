@@ -233,7 +233,6 @@ class AnimalData:
             "drop_items": ["穿山甲鱗片"],  # 違法物品
             "market_value": 0,  # 不能合法販售
             "spawn_weight": 0.05,  # 稀有
-            "police_response_time": 60,  # 1分鐘內警察到達
         },
         AnimalType.LEOPARD_CAT: {
             "size": 16,
@@ -247,7 +246,6 @@ class AnimalData:
             "drop_items": ["石虎皮"],  # 違法物品
             "market_value": 0,
             "spawn_weight": 0.03,  # 非常稀有
-            "police_response_time": 60,
         },
         AnimalType.CLOUDED_LEOPARD: {
             "size": 30,
@@ -261,7 +259,6 @@ class AnimalData:
             "drop_items": ["雲豹皮"],  # 違法物品
             "market_value": 0,
             "spawn_weight": 0.02,  # 極度稀有
-            "police_response_time": 60,
         },
         # 沼澤動物
         AnimalType.FROG: {
@@ -560,34 +557,6 @@ class AnimalData:
             return 0  # 保育類動物不能合法販售
 
         return cls.get_animal_property(animal_type, "market_value") or 0
-
-    @classmethod
-    def should_trigger_police_response(cls, animal_type):
-        """
-        檢查獵殺該動物是否會觸發警察反應\n
-        \n
-        參數:\n
-        animal_type (AnimalType): 動物類型\n
-        \n
-        回傳:\n
-        bool: True 表示會觸發警察反應\n
-        """
-        return cls.is_animal_protected(animal_type)
-
-    @classmethod
-    def get_police_response_time(cls, animal_type):
-        """
-        獲取警察反應時間\n
-        \n
-        參數:\n
-        animal_type (AnimalType): 動物類型\n
-        \n
-        回傳:\n
-        int: 警察到達時間 (秒)，如果不會觸發則返回 0\n
-        """
-        if cls.should_trigger_police_response(animal_type):
-            return cls.get_animal_property(animal_type, "police_response_time") or 60
-        return 0
 
     @classmethod
     def get_animal_statistics(cls):

@@ -568,16 +568,19 @@ class HomeScene(Scene):
         money_text = font.render(f"金錢: ${self.player.get_money()}", True, (0, 0, 0))
         screen.blit(money_text, (10, 10))
 
-        # 顯示背包使用情況
-        inventory = self.player.get_inventory_list()
-        item_count = sum(inventory.values())
-        capacity = self.player.inventory_capacity
-        inventory_text = font.render(f"背包: {item_count}/{capacity}", True, (0, 0, 0))
-        screen.blit(inventory_text, (10, 35))
+        # 顯示座標（在家裡應該顯示 (0, 0)）
+        relative_x, relative_y = self.player.get_relative_position()
+        coord_text = font.render(f"座標: ({relative_x}, {relative_y})", True, (0, 0, 0))
+        screen.blit(coord_text, (10, 35))
+
+        # 繪製物品欄（畫面底下）
+        self.player.draw_item_bar(screen)
 
         # 顯示操作提示
-        hint_text = font.render("E: 互動 | I: 背包 | 觀察各種展示區域", True, (0, 0, 0))
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 30))
+        hint_text = font.render(
+            "E: 互動 | 1-0: 選擇物品欄 | 觀察各種展示區域", True, (0, 0, 0)
+        )
+        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
 
     def handle_event(self, event):
         """
@@ -592,10 +595,22 @@ class HomeScene(Scene):
         # 讓輸入控制器處理事件
         action = self.input_controller.handle_event(event)
 
-        if action:
-            if action == "inventory":
-                self.state_manager.change_state(GameState.INVENTORY)
+        # 處理數字鍵選擇物品欄
+        if event.type == pygame.KEYDOWN:
+            # 數字鍵選擇物品欄格子 (1-9, 0代表第10格)
+            if pygame.K_1 <= event.key <= pygame.K_9:
+                slot_index = event.key - pygame.K_1  # 1鍵對應索引0
+                self.player.select_slot(slot_index)
+                print(f"選擇物品欄格子 {slot_index + 1}")
                 return True
+            elif event.key == pygame.K_0:
+                self.player.select_slot(9)  # 0鍵對應第10格（索引9）
+                print("選擇物品欄格子 10")
+                return True
+
+        if action:
+            # 移除原本的背包系統
+            pass
 
         return False
 

@@ -14,7 +14,7 @@ class Player:
     - 位置和移動控制\n
     - 生命值和死亡重生系統\n
     - 外觀和動畫\n
-    - 物品背包管理\n
+    - 物品欄管理（10格物品欄取代背包）\n
     - 金錢和經驗值\n
     - 武器和載具系統\n
     - 各種遊戲狀態\n
@@ -27,7 +27,7 @@ class Player:
         初始化玩家角色\n
         \n
         設定角色的初始位置、外觀、屬性和狀態\n
-        建立背包系統和各種遊戲數據\n
+        建立物品欄系統和各種遊戲數據\n
         \n
         參數:\n
         x (int): 初始 X 座標位置，預設為螢幕中央\n
@@ -57,6 +57,7 @@ class Player:
         self.max_health = PLAYER_MAX_HEALTH
         self.health = PLAYER_INITIAL_HEALTH
         self.is_alive = True
+        self.is_injured = False  # 玩家是否處於受傷狀態
         self.last_damage_time = 0
         self.invulnerable_time = 2.0  # 受傷後無敵時間 (秒)
 
@@ -77,9 +78,11 @@ class Player:
         # 金錢
         self.money = INITIAL_MONEY
 
-        # 背包系統
-        self.inventory = {}  # {物品名稱: 數量}
-        self.inventory_capacity = INVENTORY_CAPACITY
+        # 物品欄系統（取代原背包系統）
+        self.item_slots = [
+            None
+        ] * ITEM_BAR_SLOTS  # 10格物品欄，每格存放 {"name": str, "count": int}
+        self.selected_slot = 0  # 當前選中的格子
 
         # 添加一些初始物品供測試
         self._add_initial_items()
@@ -258,126 +261,6 @@ class Player:
         """
         self.spawn_position = position
 
-    def start_driving(self, vehicle):
-        """
-        開始駕駛載具\n
-        \n
-        參數:\n
-        vehicle (Vehicle): 載具物件\n
-        \n
-        回傳:\n
-        bool: 是否成功開始駕駛\n
-        """
-        if vehicle.get_on(self):
-            self.current_vehicle = vehicle
-            self.is_driving = True
-            print(f"開始駕駛 {vehicle.name}")
-            return True
-        return False
-
-    def stop_driving(self):
-        """
-        停止駕駛載具\n
-        \n
-        回傳:\n
-        tuple: 下車位置 (x, y)\n
-        """
-        if self.current_vehicle:
-            exit_position = self.current_vehicle.get_off()
-            self.current_vehicle = None
-            self.is_driving = False
-
-            # 設定玩家到下車位置
-            self.x, self.y = exit_position
-            self.rect.x = int(self.x)
-            self.rect.y = int(self.y)
-
-            print("停止駕駛")
-            return exit_position
-        return (self.x, self.y)
-
-    def clear_inventory(self):
-        """
-        清空背包 (死亡時使用)\n
-        \n
-        回傳:\n
-        dict: 清空前的物品列表\n
-        """
-        old_inventory = self.inventory.copy()
-        self.inventory.clear()
-        return old_inventory
-
-    def equip_weapon(self, weapon):
-        """
-        裝備武器\n
-        \n
-        參數:\n
-        weapon (Weapon): 武器物件\n
-        """
-        self.equipped_weapon = weapon
-        print(f"裝備了 {weapon.name}")
-
-    def get_equipped_weapon(self):
-        """
-        獲取當前裝備的武器\n
-        \n
-        回傳:\n
-        Weapon: 武器物件，如果沒有則返回 None\n
-        """
-        return self.equipped_weapon
-
-    def change_outfit(self, outfit_index):
-        """
-        更換服裝\n
-        \n
-        參數:\n
-        outfit_index (int): 服裝索引\n
-        \n
-        回傳:\n
-        bool: 是否成功更換\n
-        """
-        if outfit_index in self.owned_outfits:
-            self.current_outfit = outfit_index
-
-            # 更新服裝顏色
-            if outfit_index < len(CLOTHING_COLORS):
-                self.color = CLOTHING_COLORS[outfit_index]
-            else:
-                self.color = PLAYER_COLOR
-
-            print(f"更換為服裝 {outfit_index}")
-            return True
-        return False
-
-    def unlock_outfit(self, outfit_index):
-        """
-        解鎖新服裝\n
-        \n
-        參數:\n
-        outfit_index (int): 服裝索引\n
-        """
-        if outfit_index not in self.owned_outfits:
-            self.owned_outfits.append(outfit_index)
-            print(f"解鎖了新服裝 {outfit_index}")
-
-    def get_health_percentage(self):
-        """
-        獲取生命值百分比\n
-        \n
-        回傳:\n
-        float: 生命值百分比 (0.0 到 1.0)\n
-        """
-        return self.health / self.max_health
-
-    def is_injured(self):
-        """
-        檢查是否受傷\n
-        \n
-        回傳:\n
-        bool: 是否受傷 (生命值小於最大值)\n
-        """
-        return self.health < self.max_health
-
     def _update_movement(self, dt):
         """
         更新角色移動邏輯\n
@@ -396,10 +279,7 @@ class Player:
         direction = normalize_vector((self.direction_x, self.direction_y))
 
         # 根據是否在載具中調整速度
-        if self.is_driving and self.current_vehicle:
-            current_speed = self.current_vehicle.max_speed
-        else:
-            current_speed = self.speed
+        current_speed = VEHICLE_SPEED if self.in_vehicle else self.speed
 
         # 計算這一幀要移動的距離
         move_distance = current_speed * dt * 60  # 乘以 60 是為了配合 60 FPS
@@ -408,21 +288,9 @@ class Player:
         new_x = self.x + direction[0] * move_distance
         new_y = self.y + direction[1] * move_distance
 
-        if self.is_driving and self.current_vehicle:
-            # 如果正在駕駛，移動載具
-            self.current_vehicle.x = new_x
-            self.current_vehicle.y = new_y
-            # 玩家位置跟隨載具
-            self.x = new_x + self.current_vehicle.width // 2 - self.width // 2
-            self.y = new_y + self.current_vehicle.height // 2 - self.height // 2
-        else:
-            # 正常移動，限制角色不能移出螢幕邊界
-            self.x = clamp(new_x, 0, SCREEN_WIDTH - self.width)
-            self.y = clamp(new_y, 0, SCREEN_HEIGHT - self.height)
-
-        # 更新安全位置 (如果沒有危險)
-        if self.is_alive:
-            self.last_safe_position = (self.x, self.y)
+        # 限制角色不能移出螢幕邊界（在大地圖場景中會被覆蓋）
+        self.x = clamp(new_x, 0, SCREEN_WIDTH - self.width)
+        self.y = clamp(new_y, 0, SCREEN_HEIGHT - self.height)
 
     def _update_facing_direction(self):
         """
@@ -482,8 +350,8 @@ class Player:
         x (int): 新的 X 座標\n
         y (int): 新的 Y 座標\n
         """
-        self.x = clamp(x, 0, SCREEN_WIDTH - self.width)
-        self.y = clamp(y, 0, SCREEN_HEIGHT - self.height)
+        self.x = x
+        self.y = y
         self.rect.x = int(self.x)
         self.rect.y = int(self.y)
         print(f"玩家位置設定為: ({self.x}, {self.y})")
@@ -508,42 +376,55 @@ class Player:
         center_y = self.y + self.height // 2
         return (center_x, center_y)
 
-    ######################背包系統方法######################
+    def get_relative_position(self):
+        """
+        獲取相對於家的位置（以家為原點 0,0）\n
+        \n
+        回傳:\n
+        tuple: (relative_x, relative_y) 相對座標\n
+        """
+        relative_x = int(self.x - HOME_WORLD_X)
+        relative_y = int(self.y - HOME_WORLD_Y)
+        return (relative_x, relative_y)
+
+    ######################物品欄系統方法######################
     def add_item(self, item_name, quantity=1):
         """
-        將物品加入背包\n
+        將物品加入物品欄\n
         \n
-        檢查背包容量並添加物品\n
-        如果物品已存在則增加數量\n
+        檢查是否有空格子或相同物品的格子\n
+        如果有相同物品則增加數量，否則佔用新格子\n
         \n
         參數:\n
         item_name (str): 物品名稱\n
         quantity (int): 要添加的數量，預設為 1\n
         \n
         回傳:\n
-        bool: True 表示成功添加，False 表示背包已滿\n
+        bool: True 表示成功添加，False 表示物品欄已滿\n
         """
-        # 檢查背包是否還有空間
-        current_items = sum(self.inventory.values())
-        if current_items + quantity > self.inventory_capacity:
-            print(f"背包已滿，無法添加 {item_name}")
-            return False
+        # 先檢查是否有相同物品的格子
+        for i, slot in enumerate(self.item_slots):
+            if slot and slot["name"] == item_name:
+                slot["count"] += quantity
+                print(f"添加物品到格子 {i+1}: {item_name} x{quantity}")
+                return True
 
-        # 添加物品到背包
-        if item_name in self.inventory:
-            self.inventory[item_name] += quantity
-        else:
-            self.inventory[item_name] = quantity
+        # 找空格子
+        for i, slot in enumerate(self.item_slots):
+            if slot is None:
+                self.item_slots[i] = {"name": item_name, "count": quantity}
+                print(f"新物品放入格子 {i+1}: {item_name} x{quantity}")
+                return True
 
-        print(f"添加物品: {item_name} x{quantity}")
-        return True
+        print(f"物品欄已滿，無法添加 {item_name}")
+        return False
 
     def remove_item(self, item_name, quantity=1):
         """
-        從背包移除物品\n
+        從物品欄移除物品\n
         \n
         檢查物品數量並移除指定數量\n
-        如果數量歸零則從背包中刪除\n
+        如果數量歸零則清空格子\n
         \n
         參數:\n
         item_name (str): 物品名稱\n
@@ -552,29 +433,28 @@ class Player:
         回傳:\n
         bool: True 表示成功移除，False 表示物品不足\n
         """
-        if item_name not in self.inventory:
-            print(f"背包中沒有 {item_name}")
-            return False
+        for i, slot in enumerate(self.item_slots):
+            if slot and slot["name"] == item_name:
+                if slot["count"] >= quantity:
+                    slot["count"] -= quantity
+                    if slot["count"] == 0:
+                        self.item_slots[i] = None
+                        print(f"格子 {i+1} 已清空")
+                    else:
+                        print(f"從格子 {i+1} 移除 {item_name} x{quantity}")
+                    return True
+                else:
+                    print(
+                        f"{item_name} 數量不足，現有 {slot['count']}，需要 {quantity}"
+                    )
+                    return False
 
-        if self.inventory[item_name] < quantity:
-            print(
-                f"{item_name} 數量不足，現有 {self.inventory[item_name]}，需要 {quantity}"
-            )
-            return False
-
-        # 移除物品
-        self.inventory[item_name] -= quantity
-
-        # 如果數量歸零，從背包刪除
-        if self.inventory[item_name] == 0:
-            del self.inventory[item_name]
-
-        print(f"移除物品: {item_name} x{quantity}")
-        return True
+        print(f"物品欄中沒有 {item_name}")
+        return False
 
     def has_item(self, item_name, quantity=1):
         """
-        檢查背包是否有指定物品\n
+        檢查物品欄是否有指定物品\n
         \n
         參數:\n
         item_name (str): 物品名稱\n
@@ -583,11 +463,15 @@ class Player:
         回傳:\n
         bool: True 表示有足夠物品，False 表示物品不足\n
         """
-        return self.inventory.get(item_name, 0) >= quantity
+        total_count = 0
+        for slot in self.item_slots:
+            if slot and slot["name"] == item_name:
+                total_count += slot["count"]
+        return total_count >= quantity
 
     def get_item_count(self, item_name):
         """
-        獲取背包中指定物品的數量\n
+        獲取物品欄中指定物品的總數量\n
         \n
         參數:\n
         item_name (str): 物品名稱\n
@@ -595,16 +479,39 @@ class Player:
         回傳:\n
         int: 物品數量，如果沒有則回傳 0\n
         """
-        return self.inventory.get(item_name, 0)
+        total_count = 0
+        for slot in self.item_slots:
+            if slot and slot["name"] == item_name:
+                total_count += slot["count"]
+        return total_count
 
-    def get_inventory_list(self):
+    def get_item_slots(self):
         """
-        獲取背包物品清單\n
+        獲取物品欄狀態\n
         \n
         回傳:\n
-        dict: 包含所有物品名稱和數量的字典\n
+        list: 包含所有格子狀態的列表\n
         """
-        return self.inventory.copy()
+        return self.item_slots.copy()
+
+    def select_slot(self, slot_index):
+        """
+        選擇物品欄格子\n
+        \n
+        參數:\n
+        slot_index (int): 格子索引（0-9）\n
+        """
+        if 0 <= slot_index < ITEM_BAR_SLOTS:
+            self.selected_slot = slot_index
+
+    def get_selected_item(self):
+        """
+        獲取當前選中格子的物品\n
+        \n
+        回傳:\n
+        dict: 物品資訊 {"name": str, "count": int}，如果格子為空則回傳 None\n
+        """
+        return self.item_slots[self.selected_slot]
 
     ######################金錢系統方法######################
     def add_money(self, amount):
@@ -726,7 +633,7 @@ class Player:
         self._draw_direction_indicator(screen)
 
         # 繪製生命值條 (如果受傷)
-        if self.is_injured():
+        if self.is_injured:
             self._draw_health_bar(screen)
 
     def _draw_direction_indicator(self, screen):
@@ -781,6 +688,109 @@ class Player:
             health_rect = pygame.Rect(bar_x, bar_y, health_width, bar_height)
             pygame.draw.rect(screen, (0, 255, 0), health_rect)
 
+    def draw_item_bar(self, screen):
+        """
+        繪製畫面底下的物品欄\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 要繪製到的螢幕表面\n
+        """
+        # 計算物品欄位置（畫面底下中央）
+        bar_width = (
+            ITEM_BAR_SLOTS * (ITEM_BAR_SLOT_SIZE + ITEM_BAR_PADDING) - ITEM_BAR_PADDING
+        )
+        bar_x = (SCREEN_WIDTH - bar_width) // 2
+        bar_y = SCREEN_HEIGHT - ITEM_BAR_HEIGHT - 10
+
+        # 繪製物品欄背景
+        background_rect = pygame.Rect(
+            bar_x - 10, bar_y - 10, bar_width + 20, ITEM_BAR_HEIGHT + 20
+        )
+        pygame.draw.rect(screen, (50, 50, 50, 200), background_rect)
+        pygame.draw.rect(screen, (200, 200, 200), background_rect, 2)
+
+        # 繪製每個格子
+        for i in range(ITEM_BAR_SLOTS):
+            slot_x = bar_x + i * (ITEM_BAR_SLOT_SIZE + ITEM_BAR_PADDING)
+            slot_y = bar_y
+            slot_rect = pygame.Rect(
+                slot_x, slot_y, ITEM_BAR_SLOT_SIZE, ITEM_BAR_SLOT_SIZE
+            )
+
+            # 格子背景顏色
+            if i == self.selected_slot:
+                # 選中的格子用亮色
+                pygame.draw.rect(screen, (100, 150, 100), slot_rect)
+            else:
+                # 普通格子用暗色
+                pygame.draw.rect(screen, (80, 80, 80), slot_rect)
+
+            # 格子邊框
+            pygame.draw.rect(screen, (200, 200, 200), slot_rect, 2)
+
+            # 繪製物品（如果有的話）
+            slot = self.item_slots[i]
+            if slot:
+                # 物品顏色（簡單的顏色映射）
+                item_color = self._get_item_color(slot["name"])
+                item_rect = pygame.Rect(
+                    slot_x + 5,
+                    slot_y + 5,
+                    ITEM_BAR_SLOT_SIZE - 10,
+                    ITEM_BAR_SLOT_SIZE - 10,
+                )
+                pygame.draw.rect(screen, item_color, item_rect)
+
+                # 繪製物品數量
+                if slot["count"] > 1:
+                    font = pygame.font.Font(None, 20)
+                    count_text = font.render(str(slot["count"]), True, (255, 255, 255))
+                    screen.blit(
+                        count_text,
+                        (
+                            slot_x + ITEM_BAR_SLOT_SIZE - 15,
+                            slot_y + ITEM_BAR_SLOT_SIZE - 15,
+                        ),
+                    )
+
+            # 繪製格子編號
+            font = pygame.font.Font(None, 16)
+            number_text = font.render(str(i + 1), True, (255, 255, 255))
+            screen.blit(number_text, (slot_x + 2, slot_y + 2))
+
+    def _get_item_color(self, item_name):
+        """
+        根據物品名稱返回對應的顏色\n
+        \n
+        參數:\n
+        item_name (str): 物品名稱\n
+        \n
+        回傳:\n
+        tuple: RGB 顏色值\n
+        """
+        # 簡單的物品顏色映射
+        color_map = {
+            "小魚": (0, 191, 255),  # 藍色
+            "鯉魚": (255, 165, 0),  # 橘色
+            "鱸魚": (50, 205, 50),  # 綠色
+            "虹鱒": (255, 20, 147),  # 深粉色
+            "金魚王": (255, 215, 0),  # 金色
+            "兔肉": (139, 69, 19),  # 棕色
+            "鹿肉": (160, 82, 45),  # 淺棕色
+            "熊肉": (105, 105, 105),  # 灰色
+            "鳥肉": (255, 255, 255),  # 白色
+            "工具": (128, 128, 128),  # 灰色
+            "材料": (34, 139, 34),  # 森林綠
+        }
+
+        # 檢查物品名稱中是否包含關鍵字
+        for keyword, color in color_map.items():
+            if keyword in item_name:
+                return color
+
+        # 預設顏色
+        return (200, 200, 200)
+
     ######################資料序列化方法######################
     def get_save_data(self):
         """
@@ -796,7 +806,8 @@ class Player:
             "health": self.health,
             "max_health": self.max_health,
             "money": self.money,
-            "inventory": self.inventory.copy(),
+            "item_slots": self.item_slots.copy(),
+            "selected_slot": self.selected_slot,
             "experience": self.experience,
             "level": self.level,
             "current_outfit": self.current_outfit,
@@ -831,9 +842,11 @@ class Player:
             if "money" in save_data:
                 self.money = save_data["money"]
 
-            # 載入背包
-            if "inventory" in save_data:
-                self.inventory = save_data["inventory"].copy()
+            # 載入物品欄
+            if "item_slots" in save_data:
+                self.item_slots = save_data["item_slots"].copy()
+            if "selected_slot" in save_data:
+                self.selected_slot = save_data["selected_slot"]
 
             # 載入經驗值和等級
             if "experience" in save_data:
@@ -859,456 +872,6 @@ class Player:
 
             # 確保玩家還活著
             self.is_alive = self.health > 0
-
-            print("玩家存檔資料載入成功")
-
-        except Exception as e:
-            print(f"載入玩家存檔資料失敗: {e}")
-
-    def _add_initial_items(self):
-        """
-        添加初始物品供測試\n
-        """
-        # 添加一些測試物品
-        self.add_item("小魚", 3)
-        self.add_item("鯉魚", 1)
-        self.add_item("兔肉", 2)
-        self.add_item("工具", 1)
-        print("已添加初始測試物品")
-
-    def _update_movement(self, dt):
-        """
-        更新角色移動邏輯\n
-        \n
-        根據當前方向和速度計算新位置\n
-        確保移動速度在各個方向保持一致\n
-        \n
-        參數:\n
-        dt (float): 時間間隔，用於幀率無關的移動計算\n
-        """
-        # 如果沒有移動方向，就不需要移動
-        if self.direction_x == 0 and self.direction_y == 0:
-            return
-
-        # 正規化移動向量，確保斜向移動速度正確
-        direction = normalize_vector((self.direction_x, self.direction_y))
-
-        # 根據是否在載具中調整速度
-        current_speed = VEHICLE_SPEED if self.in_vehicle else self.speed
-
-        # 計算這一幀要移動的距離
-        move_distance = current_speed * dt * 60  # 乘以 60 是為了配合 60 FPS
-
-        # 計算新位置
-        new_x = self.x + direction[0] * move_distance
-        new_y = self.y + direction[1] * move_distance
-
-        # 限制角色不能移出螢幕邊界
-        self.x = clamp(new_x, 0, SCREEN_WIDTH - self.width)
-        self.y = clamp(new_y, 0, SCREEN_HEIGHT - self.height)
-
-    def _update_facing_direction(self):
-        """
-        更新角色面朝方向\n
-        \n
-        根據移動方向決定角色朝向\n
-        用於動畫播放和互動判定\n
-        """
-        # 只有在移動時才更新面朝方向
-        if not self.is_moving:
-            return
-
-        # 根據移動方向決定面朝方向
-        if abs(self.direction_x) > abs(self.direction_y):
-            # 水平移動為主
-            if self.direction_x > 0:
-                self.facing_direction = "right"
-            else:
-                self.facing_direction = "left"
-        else:
-            # 垂直移動為主
-            if self.direction_y > 0:
-                self.facing_direction = "down"
-            else:
-                self.facing_direction = "up"
-
-    def set_movement_direction(self, direction_x, direction_y):
-        """
-        設定角色移動方向\n
-        \n
-        由輸入系統調用，設定角色的移動方向\n
-        方向值應該在 -1 到 1 之間\n
-        \n
-        參數:\n
-        direction_x (float): X 軸移動方向，-1 左，1 右，0 不移動\n
-        direction_y (float): Y 軸移動方向，-1 上，1 下，0 不移動\n
-        """
-        self.direction_x = clamp(direction_x, -1, 1)
-        self.direction_y = clamp(direction_y, -1, 1)
-
-    def stop_movement(self):
-        """
-        停止角色移動\n
-        \n
-        將移動方向設為零，讓角色停止移動\n
-        """
-        self.direction_x = 0
-        self.direction_y = 0
-
-    def set_position(self, x, y):
-        """
-        直接設定角色位置\n
-        \n
-        用於場景切換、傳送等功能\n
-        \n
-        參數:\n
-        x (int): 新的 X 座標\n
-        y (int): 新的 Y 座標\n
-        """
-        self.x = clamp(x, 0, SCREEN_WIDTH - self.width)
-        self.y = clamp(y, 0, SCREEN_HEIGHT - self.height)
-        self.rect.x = int(self.x)
-        self.rect.y = int(self.y)
-        print(f"玩家位置設定為: ({self.x}, {self.y})")
-
-    def get_position(self):
-        """
-        獲取角色當前位置\n
-        \n
-        回傳:\n
-        tuple: (x, y) 座標\n
-        """
-        return (self.x, self.y)
-
-    def get_center_position(self):
-        """
-        獲取角色中心點位置\n
-        \n
-        回傳:\n
-        tuple: (center_x, center_y) 中心座標\n
-        """
-        center_x = self.x + self.width // 2
-        center_y = self.y + self.height // 2
-        return (center_x, center_y)
-
-    ######################背包系統方法######################
-    def add_item(self, item_name, quantity=1):
-        """
-        將物品加入背包\n
-        \n
-        檢查背包容量並添加物品\n
-        如果物品已存在則增加數量\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        quantity (int): 要添加的數量，預設為 1\n
-        \n
-        回傳:\n
-        bool: True 表示成功添加，False 表示背包已滿\n
-        """
-        # 檢查背包是否還有空間
-        current_items = sum(self.inventory.values())
-        if current_items + quantity > self.inventory_capacity:
-            print(f"背包已滿，無法添加 {item_name}")
-            return False
-
-        # 添加物品到背包
-        if item_name in self.inventory:
-            self.inventory[item_name] += quantity
-        else:
-            self.inventory[item_name] = quantity
-
-        print(f"添加物品: {item_name} x{quantity}")
-        return True
-
-    def remove_item(self, item_name, quantity=1):
-        """
-        從背包移除物品\n
-        \n
-        檢查物品數量並移除指定數量\n
-        如果數量歸零則從背包中刪除\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        quantity (int): 要移除的數量，預設為 1\n
-        \n
-        回傳:\n
-        bool: True 表示成功移除，False 表示物品不足\n
-        """
-        if item_name not in self.inventory:
-            print(f"背包中沒有 {item_name}")
-            return False
-
-        if self.inventory[item_name] < quantity:
-            print(
-                f"{item_name} 數量不足，現有 {self.inventory[item_name]}，需要 {quantity}"
-            )
-            return False
-
-        # 移除物品
-        self.inventory[item_name] -= quantity
-
-        # 如果數量歸零，從背包刪除
-        if self.inventory[item_name] == 0:
-            del self.inventory[item_name]
-
-        print(f"移除物品: {item_name} x{quantity}")
-        return True
-
-    def has_item(self, item_name, quantity=1):
-        """
-        檢查背包是否有指定物品\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        quantity (int): 需要的數量，預設為 1\n
-        \n
-        回傳:\n
-        bool: True 表示有足夠物品，False 表示物品不足\n
-        """
-        return self.inventory.get(item_name, 0) >= quantity
-
-    def get_item_count(self, item_name):
-        """
-        獲取背包中指定物品的數量\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        \n
-        回傳:\n
-        int: 物品數量，如果沒有則回傳 0\n
-        """
-        return self.inventory.get(item_name, 0)
-
-    def get_inventory_list(self):
-        """
-        獲取背包物品清單\n
-        \n
-        回傳:\n
-        dict: 包含所有物品名稱和數量的字典\n
-        """
-        return self.inventory.copy()
-
-    ######################金錢系統方法######################
-    def add_money(self, amount):
-        """
-        增加金錢\n
-        \n
-        參數:\n
-        amount (int): 要增加的金錢數量\n
-        """
-        if amount > 0:
-            self.money += amount
-            print(f"獲得金錢: ${amount}，總計: ${self.money}")
-
-    def spend_money(self, amount):
-        """
-        花費金錢\n
-        \n
-        檢查金錢是否足夠並扣除\n
-        \n
-        參數:\n
-        amount (int): 要花費的金錢數量\n
-        \n
-        回傳:\n
-        bool: True 表示成功花費，False 表示金錢不足\n
-        """
-        if amount <= 0:
-            return False
-
-        if self.money >= amount:
-            self.money -= amount
-            print(f"花費金錢: ${amount}，剩餘: ${self.money}")
-            return True
-        else:
-            print(f"金錢不足，需要 ${amount}，現有 ${self.money}")
-            return False
-
-    def get_money(self):
-        """
-        獲取當前金錢數量\n
-        \n
-        回傳:\n
-        int: 當前金錢數量\n
-        """
-        return self.money
-
-    ######################載具系統方法######################
-    def enter_vehicle(self):
-        """
-        進入載具\n
-        \n
-        改變玩家狀態為載具模式，提升移動速度\n
-        """
-        self.in_vehicle = True
-        print("玩家進入載具")
-
-    def exit_vehicle(self):
-        """
-        離開載具\n
-        \n
-        恢復玩家正常移動狀態\n
-        """
-        self.in_vehicle = False
-        print("玩家離開載具")
-
-    ######################工具系統方法######################
-    def equip_tool(self, tool_name):
-        """
-        裝備工具\n
-        \n
-        設定當前使用的工具\n
-        \n
-        參數:\n
-        tool_name (str): 工具名稱\n
-        """
-        self.current_tool = tool_name
-        print(f"裝備工具: {tool_name}")
-
-    def unequip_tool(self):
-        """
-        卸下工具\n
-        \n
-        清除當前使用的工具\n
-        """
-        if self.current_tool:
-            print(f"卸下工具: {self.current_tool}")
-            self.current_tool = None
-
-    def get_current_tool(self):
-        """
-        獲取當前裝備的工具\n
-        \n
-        回傳:\n
-        str: 當前工具名稱，如果沒有則回傳 None\n
-        """
-        return self.current_tool
-
-    ######################繪製方法######################
-    def draw(self, screen):
-        """
-        繪製玩家角色\n
-        \n
-        在螢幕上繪製角色的視覺表現\n
-        目前使用簡單的矩形代替圖片素材\n
-        \n
-        參數:\n
-        screen (pygame.Surface): 要繪製到的螢幕表面\n
-        """
-        # 繪製角色主體（橘色矩形）
-        pygame.draw.rect(screen, self.color, self.rect)
-
-        # 根據面朝方向繪製簡單的方向指示
-        self._draw_direction_indicator(screen)
-
-        # 如果在載具中，繪製載具外框
-        if self.in_vehicle:
-            self._draw_vehicle_indicator(screen)
-
-    def _draw_direction_indicator(self, screen):
-        """
-        繪製方向指示器\n
-        \n
-        在角色身上繪製小圓點表示面朝方向\n
-        \n
-        參數:\n
-        screen (pygame.Surface): 要繪製到的螢幕表面\n
-        """
-        indicator_color = (255, 255, 255)  # 白色指示點
-        indicator_size = 3
-
-        # 根據面朝方向計算指示點位置
-        center_x = self.rect.centerx
-        center_y = self.rect.centery
-
-        if self.facing_direction == "up":
-            indicator_pos = (center_x, center_y - 8)
-        elif self.facing_direction == "down":
-            indicator_pos = (center_x, center_y + 8)
-        elif self.facing_direction == "left":
-            indicator_pos = (center_x - 8, center_y)
-        elif self.facing_direction == "right":
-            indicator_pos = (center_x + 8, center_y)
-        else:
-            indicator_pos = (center_x, center_y)
-
-        # 繪製方向指示點
-        pygame.draw.circle(screen, indicator_color, indicator_pos, indicator_size)
-
-    def _draw_vehicle_indicator(self, screen):
-        """
-        繪製載具指示器\n
-        \n
-        當玩家在載具中時，在角色周圍繪製載具外框\n
-        \n
-        參數:\n
-        screen (pygame.Surface): 要繪製到的螢幕表面\n
-        """
-        vehicle_color = (100, 100, 100)  # 灰色載具框
-        vehicle_rect = pygame.Rect(
-            self.rect.x - 16,
-            self.rect.y - 8,
-            self.rect.width + 32,
-            self.rect.height + 16,
-        )
-
-        # 繪製載具外框
-        pygame.draw.rect(screen, vehicle_color, vehicle_rect, 3)
-
-    ######################資料序列化方法######################
-    def get_save_data(self):
-        """
-        獲取存檔資料\n
-        \n
-        將玩家狀態轉換為可儲存的字典格式\n
-        \n
-        回傳:\n
-        dict: 包含玩家所有狀態的字典\n
-        """
-        return {
-            "position": (self.x, self.y),
-            "money": self.money,
-            "inventory": self.inventory.copy(),
-            "experience": self.experience,
-            "level": self.level,
-            "current_outfit": self.current_outfit,
-            "current_tool": self.current_tool,
-        }
-
-    def load_save_data(self, save_data):
-        """
-        載入存檔資料\n
-        \n
-        從字典格式的存檔資料恢復玩家狀態\n
-        \n
-        參數:\n
-        save_data (dict): 包含玩家狀態的字典\n
-        """
-        try:
-            # 載入位置
-            if "position" in save_data:
-                x, y = save_data["position"]
-                self.set_position(x, y)
-
-            # 載入金錢
-            if "money" in save_data:
-                self.money = save_data["money"]
-
-            # 載入背包
-            if "inventory" in save_data:
-                self.inventory = save_data["inventory"].copy()
-
-            # 載入經驗值和等級
-            if "experience" in save_data:
-                self.experience = save_data["experience"]
-            if "level" in save_data:
-                self.level = save_data["level"]
-
-            # 載入服裝和工具
-            if "current_outfit" in save_data:
-                self.current_outfit = save_data["current_outfit"]
-            if "current_tool" in save_data:
-                self.current_tool = save_data["current_tool"]
 
             print("玩家存檔資料載入成功")
 

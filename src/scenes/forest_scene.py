@@ -494,21 +494,33 @@ class ForestScene(Scene):
         )
         screen.blit(money_text, (10, 10))
 
+        # 顯示座標（以家為原點）
+        relative_x, relative_y = self.player.get_relative_position()
+        coord_text = font.render(
+            f"座標: ({relative_x}, {relative_y})", True, (255, 255, 255)
+        )
+        screen.blit(coord_text, (10, 35))
+
         # 顯示動物數量
         animals = self.wildlife_manager.get_animals_in_scene("forest")
         alive_animals = sum(1 for animal in animals if animal.is_alive)
         animal_text = font.render(f"動物: {alive_animals}", True, (255, 255, 255))
-        screen.blit(animal_text, (10, 35))
+        screen.blit(animal_text, (10, 60))
+
+        # 繪製物品欄（畫面底下）
+        self.player.draw_item_bar(screen)
 
         # 顯示操作提示
         if not self.hunting_mode:
             hint_text = font.render(
-                "E: 收集 | G: 狩獵模式 | I: 背包 | D: 除錯", True, (255, 255, 255)
+                "E: 收集 | G: 狩獵模式 | 1-0: 選擇物品欄 | D: 除錯",
+                True,
+                (255, 255, 255),
             )
         else:
             hint_text = font.render("左鍵: 射擊 | G: 退出狩獵", True, (255, 255, 255))
 
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 30))
+        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
 
     def handle_event(self, event):
         """
@@ -537,11 +549,22 @@ class ForestScene(Scene):
                 self.state_manager.change_state(GameState.INVENTORY)
                 return True
 
-        # 檢查除錯模式切換
+        # 檢查除錯模式切換和物品欄選擇
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 self.debug_mode = not self.debug_mode
                 print(f"除錯模式: {'開啟' if self.debug_mode else '關閉'}")
+                return True
+
+            # 數字鍵選擇物品欄格子 (1-9, 0代表第10格)
+            elif pygame.K_1 <= event.key <= pygame.K_9:
+                slot_index = event.key - pygame.K_1  # 1鍵對應索引0
+                self.player.select_slot(slot_index)
+                print(f"選擇物品欄格子 {slot_index + 1}")
+                return True
+            elif event.key == pygame.K_0:
+                self.player.select_slot(9)  # 0鍵對應第10格（索引9）
+                print("選擇物品欄格子 10")
                 return True
 
         # 處理狩獵模式的滑鼠點擊
