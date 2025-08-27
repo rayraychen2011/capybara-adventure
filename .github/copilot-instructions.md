@@ -2,7 +2,42 @@
 
 ## Project Overview
 
-This is a cozy life simulation game featuring a capybara exploring a peaceful town, built with Python/Pygame. The codebase follows strict Traditional Chinese documentation standards with specific naming conventions and architectural patterns.
+This is a cozy life simulation game featuring a capybara exploring a peaceful town, built with Python/Pygame. The codebase follows strict Traditional Chinese documentation standards wi## Project-Specific Patterns
+
+### 🌍 **NEW: Terrain-Based Ecology System**
+
+```python
+# Ecology zone detection (replaces scene transitions)
+def _check_terrain_ecology_zones(self):
+    player_pos = self.player.get_center_position()
+    terrain_type = self.terrain_system.get_terrain_at_position(player_pos[0], player_pos[1])
+
+    # Avoid repeated messages
+    if terrain_type != self.last_terrain_type:
+        if terrain_type == 1:  # Forest ecology
+            print("🌲 進入森林生態區域 - Stevens Creek County Park 森林區")
+        elif terrain_type == 2:  # Lake ecology
+            print("🏞️ 進入湖泊生態區域 - Stevens Creek 溪流")
+        self.last_terrain_type = terrain_type
+```
+
+### 📱 NPC Management Patternspecific naming conventions and architectural patterns.
+
+## Recent Architecture Changes (Critical - 2025-01-09)
+
+⚠️ **Major Game Design Overhaul**:
+
+- **Portal System Removed**: Scene transitions via portals (`_create_scene_transitions()`) completely removed
+- **Terrain-Based Ecology**: Players now experience forest/lake ecology by walking directly on terrain types in unified world map
+- **Screen Resolution**: Changed from 1728x1728 to 1024x768 for standard display compatibility
+- **Camera System**: Full camera follow implementation with seamless world exploration
+- **UI Reorganization**: Time display moved to `top_center`, minimap remains `top_right`
+- **Terrain Integration**: `TerrainBasedSystem` now handles ecology zones via `get_terrain_at_position()`
+
+⚠️ **Road System Visual Removal**: All road, sidewalk, and traffic light visuals have been removed while preserving logic:
+
+- `RoadSegment.draw()`, `Intersection.draw()`, `TrafficLight.draw()` now contain only `pass` statements
+- All collision detection, pathfinding, and traffic logic remains functional for NPCs/vehicles
 
 ## Architecture & Core Systems
 
@@ -18,6 +53,25 @@ GameEngine -> [StateManager + SceneManager + TimeManager + PowerManager] -> Scen
 - **TimeManager** (`src/systems/time_system.py`): Game time, day/night cycles, work schedules (unique rule: weekends are workdays, Monday-Friday rest days)
 - **PowerManager** (`src/systems/power_system.py`): Electrical grid simulation affecting 30 town districts with worker injury system
 
+### 🗺️ **NEW: Unified Terrain-Based World System**
+
+**Critical Change**: Instead of separate forest/lake scenes, everything exists in one continuous world map:
+
+- **TerrainBasedSystem** (`src/systems/terrain_based_system.py`): Loads real Cupertino CSV data and auto-generates buildings, ecology zones
+- **Terrain Codes**: 0=grass, 1=forest, 2=water, 3=road, 4=highway, 5=residential, 6=commercial, 7=park, 8=parking, 9=hills
+- **Ecology Integration**: Walking on terrain code 1 triggers forest ecology, terrain code 2 triggers lake ecology
+- **Camera Follow**: `_update_camera()` keeps player centered, constrained to map boundaries
+- **No Scene Transitions**: Players explore seamlessly without loading screens
+
+```python
+# New terrain ecology detection pattern
+terrain_type = self.terrain_system.get_terrain_at_position(player_x, player_y)
+if terrain_type == 1:  # Forest ecology zone
+    print("🌲 進入森林生態區域 - Stevens Creek County Park 森林區")
+elif terrain_type == 2:  # Lake ecology zone
+    print("🏞️ 進入湖泊生態區域 - Stevens Creek 溪流")
+```
+
 ### 🎮 Scene System Pattern
 
 All scenes inherit from `Scene` base class with required methods:
@@ -25,7 +79,7 @@ All scenes inherit from `Scene` base class with required methods:
 - `enter()` / `exit()` - lifecycle hooks
 - `update(dt)` / `draw(screen)` - frame updates
 - `handle_event(event)` - input processing
-- `request_scene_change(target_scene)` - scene transitions
+- `request_scene_change(target_scene)` - scene transitions (now only for menu/inventory/home)
 
 Scene registration pattern in GameEngine:
 
@@ -34,12 +88,12 @@ town_scene = TownScene(self.state_manager, self.time_manager, self.power_manager
 self.scene_manager.register_scene(SCENE_TOWN, town_scene)
 ```
 
-**Available Scenes**: town, forest, lake, home, menu, inventory
+**Available Scenes**: town (main world), home, menu, inventory
 
 ### 🗺️ Map & Terrain System
 
 - **Cupertino Map**: Real-world CSV-based terrain data (`config/cupertino_map_edited.csv`) with 10 terrain types (0-9)
-- **TerrainMapLoader** (`src/utils/terrain_map_loader.py`): Converts CSV terrain codes to game objects
+- **TerrainBasedSystem** (`src/systems/terrain_based_system.py`): Unified world system that loads CSV data and generates ecology zones
 - **TileMapManager** (`src/systems/tile_system.py`): 30x30 town grid with streets, crosswalks, and building placement
 - **Coordinate System**: Large world coordinates with camera offset for viewport rendering
 
@@ -47,7 +101,8 @@ self.scene_manager.register_scene(SCENE_TOWN, town_scene)
 
 - **Player** class with 10-slot item bar (replaces traditional inventory), position tracking, health/money
 - **InputController** handles WASD/arrow keys + action mapping (E for interact, I for inventory)
-- Scene transitions triggered by collision detection with designated areas
+- **Movement Speed**: Currently `PLAYER_SPEED = 0.05` (very slow, may need adjustment)
+- **World Coordinates**: Large world with camera offset for viewport rendering
 
 ### 🏢 NPC & Time Systems Integration
 
@@ -60,14 +115,15 @@ self.scene_manager.register_scene(SCENE_TOWN, town_scene)
 
 ```
 src/systems/
-  time_system.py      # Day/night cycles, work schedules
-  power_system.py     # Electrical grid simulation
-  npc/               # NPC management with professions
-    npc_manager.py   # Bulk NPC operations
-    npc.py          # Individual NPC behavior
-    profession.py   # Job roles and assignments
-  wildlife/          # Forest animal simulation
-  vehicle_system.py  # Transportation mechanics
+  terrain_based_system.py # NEW: Unified world system with CSV terrain loading
+  time_system.py          # Day/night cycles, work schedules
+  power_system.py         # Electrical grid simulation
+  npc/                   # NPC management with professions
+    npc_manager.py       # Bulk NPC operations
+    npc.py              # Individual NPC behavior
+    profession.py       # Job roles and assignments
+  wildlife/              # Forest animal simulation
+  vehicle_system.py      # Transportation mechanics
 ```
 
 ## Critical Coding Conventions
@@ -127,7 +183,14 @@ config/          # Centralized settings with detailed comments
 
 ## Development Workflows
 
-### 🔧 Adding New Systems
+### �️ Adding Terrain-Based Features
+
+1. Check terrain at player position: `terrain_system.get_terrain_at_position(x, y)`
+2. Use terrain codes for feature detection (1=forest, 2=water, etc.)
+3. Implement ecology responses in `_check_terrain_ecology_zones()`
+4. Add terrain-specific buildings/resources to `TerrainBasedSystem`
+
+### �🔧 Adding New Systems
 
 1. Create system class in `src/systems/` with Traditional Chinese documentation
 2. Initialize in `GameEngine.__init__()` with proper dependency injection
@@ -158,6 +221,8 @@ config/          # Centralized settings with detailed comments
 - All colors defined in `config/settings.py` with descriptive names
 - UI components in `src/utils/` follow naming pattern: `*_ui.py`
 - Coordinate system: (0,0) at top-left, positive Y downward
+- **UI Positioning**: `TimeDisplayUI` supports `top_center` positioning for centered top displays
+- **Screen Resolution**: Now 1024x768 instead of 1728x1728
 
 ## Key Dependencies & Integration Points
 
@@ -165,9 +230,9 @@ config/          # Centralized settings with detailed comments
 
 **Critical**: All constants in `config/settings.py` with extensive Traditional Chinese comments:
 
-- Game dimensions: `SCREEN_WIDTH/HEIGHT`, `FPS`
+- Game dimensions: `SCREEN_WIDTH = 1024`, `SCREEN_HEIGHT = 768`, `FPS = 60`
 - NPC counts: `TOTAL_TOWN_NPCS = 330`, `TOTAL_TRIBE_NPCS = 100`
-- Map layout: 30x30 street grid with `TOWN_GRID_WIDTH/HEIGHT` (corrected from 40x25)
+- Map layout: 30x30 street grid with `TOWN_GRID_WIDTH/HEIGHT`
 - System parameters: Power grid (30 districts), profession distributions
 - **Terrain mapping**: Cupertino CSV data with codes 0-9 for different terrain types
 
@@ -269,6 +334,8 @@ def __init__(self, state_manager, time_manager=None, power_manager=None):
 - **Spatial partitioning**: Only update NPCs within `update_distance` of player
 - **Render culling**: Only draw entities within camera view + margin
 - **State caching**: Cache expensive calculations in managers
+- **Input optimization**: Direct movement updates per-frame for <0.03s latency
+- **Frame staggering**: Time system updates every 2 frames, power system every 3 frames
 
 ## Common Gotchas & Critical Rules
 
@@ -278,8 +345,9 @@ def __init__(self, state_manager, time_manager=None, power_manager=None):
 - ⚠️ **Section headers required**: `######################載入套件######################`
 - ⚠️ **System dependencies**: Always inject managers, never import globally
 - ⚠️ **State transitions**: Use StateManager, never direct scene switching
-- ⚠️ **Font system**: Must call `init_font_system()` before text rendering
-- ⚠️ **Coordinate systems**: Large maps use world coordinates, scenes use camera offset
+- ⚠️ **No more portal transitions**: Use terrain ecology zones instead
+- ⚠️ **Screen resolution**: Now 1024x768, update UI positioning accordingly
+- ⚠️ **Player speed**: Currently very slow (0.05), may need adjustment for playability
 
 ## Testing & Debugging
 
@@ -306,9 +374,13 @@ Game flow: `main()` → `pygame.init()` → `GameEngine()` → `run()` → main 
 - Power grid: Visual debug via F12 hotkey shows district states
 - Performance: Built-in FPS display and render distance controls
 - **Terrain debugging**: Use `TerrainMapLoader` to visualize CSV terrain data
+- **Ecology zones**: Check `get_terrain_at_position()` return values for terrain detection
+- **Camera bounds**: Verify camera stays within `terrain_system.map_width/height * tile_size`
 
 ### 🏗️ Development Entry Points
 
 - **Main entry**: `main.py` calls `GameEngine()` directly (no `if __name__ == "__main__"`)
-- **Core loop**: GameEngine manages 60 FPS loop with optimized system updates (time every 2 frames, power every 3 frames)
+- **Core loop**: GameEngine manages 60 FPS loop with optimized system updates
 - **Scene creation**: All scenes require `(state_manager, time_manager=None, power_manager=None)` constructor pattern
+- **Terrain integration**: Always use `TerrainBasedSystem` for world data instead of hardcoded scene boundaries
+- **Recent changes**: Portal system removed (2025-01-09), terrain ecology system implemented, resolution changed to 1024x768

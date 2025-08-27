@@ -83,7 +83,7 @@ class NPC:
 
         # 外觀屬性
         self.color = ProfessionData.get_profession_color(profession)
-        self.size = 12  # NPC 顯示大小
+        self.size = 3  # NPC 顯示大小（縮小以配合玩家尺寸）
 
         # 對話系統
         self.dialogue_lines = self._generate_dialogue()
@@ -630,7 +630,7 @@ class NPC:
 
         # 檢查與所有建築物的碰撞
         for building in self.buildings:
-            if npc_rect.colliderect(building["area"]):
+            if npc_rect.colliderect(building.rect):
                 return True
 
         return False
@@ -697,7 +697,7 @@ class NPC:
 
         # 檢查與所有建築物的重疊
         for building in self.buildings:
-            if npc_rect.colliderect(building["area"]):
+            if npc_rect.colliderect(building.rect):
                 # NPC 與建築物重疊，表示正在互動
                 self.is_interacting_with_building = True
                 return

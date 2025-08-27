@@ -80,20 +80,56 @@ GRASS_COLOR = (34, 139, 34)
 WATER_COLOR = (0, 191, 255)
 
 ######################玩家角色設定######################
-# 玩家角色的移動速度，單位為像素/幀（已優化）
-PLAYER_SPEED = 4  # 提升移動速度以改善操控感
+# 玩家角色的移動速度，單位為像素/幀
+PLAYER_SPEED = 0.05 # 調整為合適的移動速度
 
-# 玩家角色的尺寸 - 寬度
-PLAYER_WIDTH = 32
+# 玩家角色的尺寸 - 寬度（縮小為原來的1/4以配合建築系統）
+PLAYER_WIDTH = 8
 
-# 玩家角色的尺寸 - 高度
-PLAYER_HEIGHT = 32
+# 玩家角色的尺寸 - 高度（縮小為原來的1/4以配合建築系統）
+PLAYER_HEIGHT = 8
 
 # 玩家初始位置 X 座標
 PLAYER_START_X = SCREEN_WIDTH // 2
 
 # 玩家初始位置 Y 座標
 PLAYER_START_Y = SCREEN_HEIGHT // 2
+
+######################地圖格系統設定######################
+# 一格大小為玩家的 216 倍（更新後為合理尺寸）
+GRID_SIZE = PLAYER_WIDTH * 216  # 8 * 216 = 1728 像素
+
+# 住宅建築規則 - 住宅為玩家的5倍長寬
+RESIDENTIAL_MIN_SIZE = PLAYER_WIDTH * 5  # 住宅寬度 = 玩家的 5 倍 = 40 像素
+RESIDENTIAL_HEIGHT = PLAYER_HEIGHT * 5  # 住宅高度 = 玩家的 5 倍 = 40 像素
+RESIDENTIAL_MAX_PER_GRID = 6  # 每格最多 6 個住宅
+RESIDENTIAL_SPACING = 5  # 住宅之間的通行間隙（調整為較小間距）
+
+# 商業建築規則  
+COMMERCIAL_MIN_SIZE = PLAYER_WIDTH * 7  # 玩家的 7 倍 = 56 像素
+COMMERCIAL_MAX_PER_GRID = 4  # 每格最多 4 個商業建築
+COMMERCIAL_SPACING = 8  # 商業建築之間的間隙（調整為較小間距）
+
+######################小地圖設定######################
+# 小地圖基本設定
+MINIMAP_WIDTH = 300  # 小地圖寬度
+MINIMAP_HEIGHT = 300  # 小地圖高度
+MINIMAP_BACKGROUND_COLOR = (0, 0, 0, 180)  # 半透明黑色背景
+MINIMAP_BORDER_COLOR = (255, 255, 255)  # 白色邊框
+
+# 小地圖位置 (螢幕右上角，適應新螢幕尺寸 1024x768)
+MINIMAP_X = SCREEN_WIDTH - MINIMAP_WIDTH - 20
+MINIMAP_Y = 20
+
+# 小地圖縮放設定
+MINIMAP_MIN_ZOOM = 0.1  # 最小縮放比例 (10%)
+MINIMAP_MAX_ZOOM = 2.0  # 最大縮放比例 (200%)
+MINIMAP_DEFAULT_ZOOM = 0.5  # 預設縮放比例 (50%)
+MINIMAP_ZOOM_STEP = 0.1  # 每次縮放步進
+
+# 玩家在小地圖上的標示（配合縮小的玩家尺寸）
+MINIMAP_PLAYER_SIZE = 4  # 玩家三角形的大小（縮小）
+MINIMAP_PLAYER_COLOR = (255, 0, 0)  # 紅色玩家標示
 
 ######################效能優化設定######################
 # 碰撞檢測優化距離（像素）
@@ -225,11 +261,11 @@ HUNTER_COUNT = 20  # 獵人
 # 載具移動速度，單位為像素/幀
 VEHICLE_SPEED = 6
 
-# 載具尺寸 - 寬度
-VEHICLE_WIDTH = 64
+# 載具尺寸 - 寬度（配合縮小的玩家尺寸）
+VEHICLE_WIDTH = 16
 
-# 載具尺寸 - 高度
-VEHICLE_HEIGHT = 32
+# 載具尺寸 - 高度（配合縮小的玩家尺寸）
+VEHICLE_HEIGHT = 8
 
 # 載具顏色設定
 CAR_COLOR = (255, 0, 0)  # 汽車 - 紅色
@@ -259,11 +295,11 @@ CLOTHING_COLORS = [
 # 載具移動速度，單位為像素/幀
 VEHICLE_SPEED = 6
 
-# 載具尺寸 - 寬度
-VEHICLE_WIDTH = 64
+# 載具尺寸 - 寬度（配合縮小的玩家尺寸）
+VEHICLE_WIDTH = 16
 
-# 載具尺寸 - 高度
-VEHICLE_HEIGHT = 32
+# 載具尺寸 - 高度（配合縮小的玩家尺寸）
+VEHICLE_HEIGHT = 8
 
 # 載具顏色
 CAR_COLOR = (255, 0, 0)  # 紅色汽車

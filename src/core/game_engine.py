@@ -54,8 +54,8 @@ class GameEngine:
         # 建立時間管理系統
         self.time_manager = TimeManager(time_scale=1.0)  # 正常時間流速
 
-        # 建立時間顯示 UI
-        self.time_display = TimeDisplayUI(position="top_right", style="compact")
+        # 建立時間顯示 UI - 置中顯示在螢幕正上方
+        self.time_display = TimeDisplayUI(position="top_center", style="compact")
 
         # 建立電力管理系統
         self.power_manager = PowerManager(time_manager=self.time_manager)

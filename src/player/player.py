@@ -646,31 +646,58 @@ class Player:
         """
         繪製方向指示器\n
         \n
-        在角色身上繪製小圓點表示面朝方向\n
+        在角色身上繪製等腰三角形表示面朝方向\n
+        這與小地圖上的表示方式一致\n
         \n
         參數:\n
         screen (pygame.Surface): 要繪製到的螢幕表面\n
         """
-        indicator_color = (255, 255, 255)  # 白色指示點
-        indicator_size = 3
+        indicator_color = (255, 255, 255)  # 白色指示三角形
+        size = 2  # 三角形大小（調整為配合縮小的玩家尺寸）
 
-        # 根據面朝方向計算指示點位置
+        # 計算角色中心位置
         center_x = self.rect.centerx
         center_y = self.rect.centery
 
+        # 根據面朝方向計算三角形的三個頂點
         if self.facing_direction == "up":
-            indicator_pos = (center_x, center_y - 8)
+            # 頂點朝上
+            points = [
+                (center_x, center_y - size),          # 頂點
+                (center_x - size//2, center_y + size//2),  # 左下
+                (center_x + size//2, center_y + size//2)   # 右下
+            ]
         elif self.facing_direction == "down":
-            indicator_pos = (center_x, center_y + 8)
+            # 頂點朝下
+            points = [
+                (center_x, center_y + size),          # 頂點
+                (center_x - size//2, center_y - size//2),  # 左上
+                (center_x + size//2, center_y - size//2)   # 右上
+            ]
         elif self.facing_direction == "left":
-            indicator_pos = (center_x - 8, center_y)
+            # 頂點朝左
+            points = [
+                (center_x - size, center_y),          # 頂點
+                (center_x + size//2, center_y - size//2),  # 右上
+                (center_x + size//2, center_y + size//2)   # 右下
+            ]
         elif self.facing_direction == "right":
-            indicator_pos = (center_x + 8, center_y)
+            # 頂點朝右
+            points = [
+                (center_x + size, center_y),          # 頂點
+                (center_x - size//2, center_y - size//2),  # 左上
+                (center_x - size//2, center_y + size//2)   # 左下
+            ]
         else:
-            indicator_pos = (center_x, center_y)
+            # 預設朝下
+            points = [
+                (center_x, center_y + size),
+                (center_x - size//2, center_y - size//2),
+                (center_x + size//2, center_y - size//2)
+            ]
 
-        # 繪製方向指示點
-        pygame.draw.circle(screen, indicator_color, indicator_pos, indicator_size)
+        # 繪製方向指示三角形
+        pygame.draw.polygon(screen, indicator_color, points)
 
     def _draw_health_bar(self, screen):
         """

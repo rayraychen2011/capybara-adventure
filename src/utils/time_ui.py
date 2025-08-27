@@ -18,7 +18,7 @@ class TimeDisplayUI:
     支援多種顯示風格和位置設定\n
     """
 
-    def __init__(self, position="top_right", style="compact"):
+    def __init__(self, position="top_center", style="compact"):
         """
         初始化時間顯示 UI\n
         \n
@@ -67,6 +67,9 @@ class TimeDisplayUI:
             self.anchor_y = self.padding
         elif self.position == "top_right":
             self.anchor_x = SCREEN_WIDTH - self.padding
+            self.anchor_y = self.padding
+        elif self.position == "top_center":
+            self.anchor_x = SCREEN_WIDTH // 2
             self.anchor_y = self.padding
         elif self.position == "bottom_left":
             self.anchor_x = self.padding
@@ -141,6 +144,8 @@ class TimeDisplayUI:
         # 計算面板位置
         if "right" in self.position:
             panel_x = self.anchor_x - panel_width
+        elif "center" in self.position:
+            panel_x = self.anchor_x - panel_width // 2
         else:
             panel_x = self.anchor_x
 
@@ -248,6 +253,8 @@ class TimeDisplayUI:
         # 計算面板位置
         if "right" in self.position:
             panel_x = self.anchor_x - panel_width
+        elif "center" in self.position:
+            panel_x = self.anchor_x - panel_width // 2
         else:
             panel_x = self.anchor_x
 
@@ -293,6 +300,8 @@ class TimeDisplayUI:
         # 計算位置
         if "right" in self.position:
             text_x = self.anchor_x - time_surface.get_width()
+        elif "center" in self.position:
+            text_x = self.anchor_x - time_surface.get_width() // 2
         else:
             text_x = self.anchor_x
 

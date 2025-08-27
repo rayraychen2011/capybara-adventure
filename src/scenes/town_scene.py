@@ -8,10 +8,13 @@ from src.player.player import Player
 from src.player.input_controller import InputController
 from src.utils.font_manager import get_font_manager
 from src.utils.npc_info_ui import NPCInfoUI
+from src.utils.minimap_ui import MinimapUI
+from src.utils.time_ui import TimeDisplayUI
 from src.systems.npc.npc_manager import NPCManager
 from src.systems.road_system import RoadManager
 from src.systems.vehicle_system import VehicleManager
 from src.systems.tile_system import TileMapManager
+from src.systems.terrain_based_system import TerrainBasedSystem
 from config.settings import *
 
 
@@ -57,24 +60,19 @@ class TownScene(Scene):
         # 建立輸入控制器
         self.input_controller = InputController(self.player)
 
-        # 建立格子地圖系統 (在生成建築前先創建)
+        # 建立基於地形的系統管理器
+        self.terrain_system = TerrainBasedSystem(self.player)
+        
+        # 載入地形地圖並自動配置所有系統
+        terrain_map_path = "config/cupertino_map_edited.csv"
+        if not self.terrain_system.load_terrain_map(terrain_map_path):
+            print("警告：地形地圖載入失敗，使用預設系統")
+            self._setup_fallback_systems()
+        else:
+            print("地形地圖載入成功，系統自動配置完成")
+
+        # 建立格子地圖系統 (保留用於 NPC 導航)
         self.tile_map = TileMapManager(TOWN_TOTAL_WIDTH, TOWN_TOTAL_HEIGHT, grid_size=20)
-
-        # 定義小鎮邊界 (扣除城牆)
-        town_bounds = (
-            WALL_THICKNESS,
-            WALL_THICKNESS,
-            TOWN_TOTAL_WIDTH - WALL_THICKNESS * 2,
-            TOWN_TOTAL_HEIGHT - WALL_THICKNESS * 2,
-        )
-
-        # 創建格子地圖佈局（街道、人行道、斑馬線）
-        self.tile_map.create_town_layout(town_bounds)
-
-        # 生成小鎮結構
-        self._generate_town_layout()
-        self._generate_buildings()
-        self._create_scene_transitions()
 
         # 建立 NPC 管理器，傳入時間管理器
         self.npc_manager = NPCManager(self.time_manager)
@@ -85,15 +83,33 @@ class TownScene(Scene):
         # 建立載具管理器
         self.vehicle_manager = VehicleManager()
 
+        # 定義小鎮邊界 (使用地圖尺寸)
+        town_bounds = (
+            0, 0, 
+            self.terrain_system.map_width * self.terrain_system.tile_size, 
+            self.terrain_system.map_height * self.terrain_system.tile_size
+        )
+
+        # 更新攝影機和玩家初始位置以符合新地圖
+        self.camera_x = 0
+        self.camera_y = 0
+        self.player.set_position(town_bounds[2] // 2, town_bounds[3] // 2)
+
+        # 創建格子地圖佈局（街道、人行道、斑馬線）- 保留用於 NPC 導航
+        self.tile_map.create_town_layout(town_bounds)
+
+        # 建立場景切換區域（移除 - 玩家可直接在地圖上進入不同生態區域）
+        # self._create_scene_transitions(town_bounds)
+
         forest_bounds = (0, 0, SCREEN_WIDTH * 8, SCREEN_HEIGHT * 8)
 
-        # 為 NPC 管理器設定建築物參考（在創建 NPC 之前）
-        self.npc_manager.buildings = self.buildings
+        # 為 NPC 管理器設定建築物參考
+        self.npc_manager.buildings = self.terrain_system.buildings
 
         # 初始化道路網絡
         self.road_manager.create_road_network_for_town(town_bounds)
 
-        # 初始化載具生成點
+        # 初始化載具生成點和車輛管理
         self._setup_vehicle_spawns(town_bounds)
 
         # 初始化電力網格（如果有電力管理器）
@@ -104,7 +120,7 @@ class TownScene(Scene):
         self.npc_manager.initialize_npcs(town_bounds, forest_bounds)
 
         # 為 NPC 設定建築物參考，用於碰撞檢測
-        self.npc_manager.set_buildings_reference(self.buildings)
+        self.npc_manager.set_buildings_reference(self.terrain_system.buildings)
 
         # 為 NPC 設定道路系統參考，用於智能路徑規劃
         self.npc_manager.set_road_system_reference(self.road_manager)
@@ -125,7 +141,20 @@ class TownScene(Scene):
         # NPC 資訊顯示器
         self.npc_info_ui = NPCInfoUI()
 
-        print("大型小鎮場景已建立 (30x30 街道)")
+        # 小地圖系統
+        self.minimap_ui = MinimapUI()
+
+        # 時間顯示UI系統（頂部中央顯示）
+        self.time_ui = TimeDisplayUI(position="top_center", style="compact")
+
+        print("大型小鎮場景已建立 (基於地形系統)")
+
+    def _setup_fallback_systems(self):
+        """
+        設置備用系統（當地形地圖載入失敗時使用）\n
+        """
+        print("設置備用系統...")
+        # 這裡可以保留原本的建築生成邏輯作為備用
 
     def _setup_vehicle_spawns(self, town_bounds):
         """
@@ -137,23 +166,18 @@ class TownScene(Scene):
         # 在地圖邊緣創建 AI 載具生成點
         self.vehicle_manager.create_map_edge_spawns(town_bounds)
 
-        # 在小鎮內創建玩家載具停車點
-        tx, ty, tw, th = town_bounds
+        # 使用地形系統的停車場作為玩家載具停車點
+        parking_spots = self.terrain_system.get_parking_spots_in_area(
+            (town_bounds[2] // 2, town_bounds[3] // 2), 
+            max(town_bounds[2], town_bounds[3]) // 2
+        )
 
-        # 在各個街區附近創建停車位
-        for i in range(10):  # 創建10個停車位
-            # 隨機選擇一個街區
-            block = random.choice(self.street_blocks)
-
-            # 在街區邊緣創建停車位
-            park_x = block["rect"].x + block["rect"].width + 10
-            park_y = block["rect"].y + random.randint(0, block["rect"].height - 30)
-
-            # 確保停車位在小鎮範圍內
-            if park_x < tx + tw - 50 and park_y < ty + th - 50:
-                vehicle_types = ["car", "bike", "motorcycle"]  # 玩家可用的載具類型
+        # 從停車場中選擇一些位置作為玩家可用的載具停車點
+        for i, spot in enumerate(parking_spots[:20]):  # 限制20個玩家載具停車點
+            if not spot['occupied']:  # 只使用空的停車位
+                vehicle_types = ["car", "bike", "motorcycle"]
                 self.vehicle_manager.add_spawn_point(
-                    (park_x, park_y), vehicle_types, is_ai_spawn=False
+                    spot['position'], vehicle_types, is_ai_spawn=False
                 )
 
     def _generate_town_layout(self):
@@ -528,41 +552,34 @@ class TownScene(Scene):
             }.get(building_type, building_type)
             print(f"  {type_name}: {count} 棟")
 
-    def _create_scene_transitions(self):
+    def _create_scene_transitions(self, town_bounds):
         """
-        建立場景切換區域 - 在城牆的出入口\n
+        建立場景切換區域 - 在地圖邊界\n
+        \n
+        參數:\n
+        town_bounds (tuple): 小鎮邊界 (x, y, width, height)\n
         """
+        tx, ty, tw, th = town_bounds
+        
         self.scene_transitions = [
             {
                 "name": "森林入口",
                 "target_scene": SCENE_FOREST,
-                "area": pygame.Rect(
-                    0, TOWN_TOTAL_HEIGHT // 2 - 50, WALL_THICKNESS, 100
-                ),
+                "area": pygame.Rect(tx, th // 2 - 50, 50, 100),
                 "color": (34, 139, 34),
                 "description": "向西進入森林",
             },
             {
-                "name": "湖泊入口",
+                "name": "湖泊入口", 
                 "target_scene": SCENE_LAKE,
-                "area": pygame.Rect(
-                    TOWN_TOTAL_WIDTH - WALL_THICKNESS,
-                    TOWN_TOTAL_HEIGHT // 2 - 50,
-                    WALL_THICKNESS,
-                    100,
-                ),
+                "area": pygame.Rect(tx + tw - 50, th // 2 - 50, 50, 100),
                 "color": (0, 191, 255),
                 "description": "向東前往湖泊",
             },
             {
                 "name": "家入口",
                 "target_scene": SCENE_HOME,
-                "area": pygame.Rect(
-                    TOWN_TOTAL_WIDTH // 2 - 50,
-                    TOWN_TOTAL_HEIGHT - WALL_THICKNESS,
-                    100,
-                    WALL_THICKNESS,
-                ),
+                "area": pygame.Rect(tw // 2 - 50, ty + th - 50, 100, 50),
                 "color": (255, 215, 0),
                 "description": "向南回家 (可傳送)",
             },
@@ -631,13 +648,17 @@ class TownScene(Scene):
         """
         更新攝影機位置，讓它跟隨玩家移動\n
         """
+        # 計算地圖尺寸
+        map_width = self.terrain_system.map_width * self.terrain_system.tile_size
+        map_height = self.terrain_system.map_height * self.terrain_system.tile_size
+        
         # 攝影機居中跟隨玩家
         target_camera_x = self.player.x - SCREEN_WIDTH // 2
         target_camera_y = self.player.y - SCREEN_HEIGHT // 2
 
-        # 限制攝影機不超出小鎮邊界
-        self.camera_x = max(0, min(target_camera_x, TOWN_TOTAL_WIDTH - SCREEN_WIDTH))
-        self.camera_y = max(0, min(target_camera_y, TOWN_TOTAL_HEIGHT - SCREEN_HEIGHT))
+        # 限制攝影機不超出地圖邊界
+        self.camera_x = max(0, min(target_camera_x, map_width - SCREEN_WIDTH))
+        self.camera_y = max(0, min(target_camera_y, map_height - SCREEN_HEIGHT))
 
     def update(self, dt):
         """
@@ -669,6 +690,10 @@ class TownScene(Scene):
         # 使用時間片輪轉，避免每幀都更新所有系統
         frame_count = int(pygame.time.get_ticks() / 16.67)  # 假設60FPS
 
+        # 更新時間UI
+        if self.time_manager:
+            self.time_ui.update(dt)
+
         if frame_count % 2 == 0:  # 每隔一幀更新道路系統
             self.road_manager.update(dt)
 
@@ -690,18 +715,16 @@ class TownScene(Scene):
         player_position = self.player.get_center_position()
         self.npc_manager.update_optimized(dt, player_position)
 
-        # 最低優先級：場景切換和互動檢查
-        if frame_count % 4 == 0:  # 每隔三幀檢查一次場景切換
-            self._check_scene_transitions()
+        # 最低優先級：互動檢查（移除場景切換檢查）
+        if frame_count % 4 == 0:  # 每隔三幀檢查一次
+            # 移除 self._check_scene_transitions() - 改由地形系統處理生態切換
             self._check_building_interactions()
             self._check_npc_interactions()
+            self._check_terrain_ecology_zones()
 
     def _fast_collision_check(self, prev_x, prev_y):
         """
-        快速碰撞檢測 - 使用空間優化算法\n
-        \n
-        只檢測玩家附近的建築物，大幅提升效能\n
-        使用粗略距離檢測進行預篩選\n
+        快速碰撞檢測 - 使用地形系統進行建築碰撞檢測\n
         \n
         參數:\n
         prev_x (float): 玩家移動前的 X 座標\n
@@ -712,28 +735,16 @@ class TownScene(Scene):
             self.player.x, self.player.y, self.player.width, self.player.height
         )
 
-        # 定義檢測範圍（只檢查玩家附近的建築物）
-        check_distance = 100  # 檢測範圍為100像素
-        player_center_x = self.player.x + self.player.width // 2
-        player_center_y = self.player.y + self.player.height // 2
+        # 使用地形系統獲取附近的建築物
+        player_center = (self.player.x + self.player.width // 2, 
+                        self.player.y + self.player.height // 2)
+        nearby_buildings = self.terrain_system.get_buildings_in_area(player_center, 100)
 
-        # 快速預篩選：只檢查距離玩家較近的建築物
+        # 檢查建築物碰撞
         collision_detected = False
-        for building in self.buildings:
-            # 粗略距離檢測（使用曼哈頓距離，比歐幾里得距離快）
-            building_center_x = building["area"].centerx
-            building_center_y = building["area"].centery
-
-            manhattan_distance = abs(player_center_x - building_center_x) + abs(
-                player_center_y - building_center_y
-            )
-
-            # 如果距離太遠，跳過精確碰撞檢測
-            if manhattan_distance > check_distance:
-                continue
-
-            # 精確碰撞檢測
-            if player_rect.colliderect(building["area"]):
+        for building in nearby_buildings:
+            building_rect = pygame.Rect(building.x, building.y, building.width, building.height)
+            if player_rect.colliderect(building_rect):
                 collision_detected = True
                 break
 
@@ -745,19 +756,9 @@ class TownScene(Scene):
 
             # 快速檢查只回退 X 是否還有碰撞
             x_collision = False
-            for building in self.buildings:
-                # 再次使用距離預篩選
-                building_center_x = building["area"].centerx
-                building_center_y = building["area"].centery
-
-                manhattan_distance = abs(
-                    (self.player.x + self.player.width // 2) - building_center_x
-                ) + abs((self.player.y + self.player.height // 2) - building_center_y)
-
-                if manhattan_distance > check_distance:
-                    continue
-
-                if player_rect.colliderect(building["area"]):
+            for building in nearby_buildings:
+                building_rect = pygame.Rect(building.x, building.y, building.width, building.height)
+                if player_rect.colliderect(building_rect):
                     x_collision = True
                     break
 
@@ -768,50 +769,71 @@ class TownScene(Scene):
             # 停止玩家移動方向，防止持續撞牆
             self.player.stop_movement()
 
-        # 確保玩家不會穿越城牆（簡單邊界檢查，效能最佳）
-        if self.player.x < WALL_THICKNESS:
-            self.player.x = WALL_THICKNESS
-        elif self.player.x > TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width:
-            self.player.x = TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width
+        # 確保玩家不會超出地圖邊界
+        map_width = self.terrain_system.map_width * self.terrain_system.tile_size
+        map_height = self.terrain_system.map_height * self.terrain_system.tile_size
+        
+        if self.player.x < 0:
+            self.player.x = 0
+        elif self.player.x + self.player.width > map_width:
+            self.player.x = map_width - self.player.width
 
-        if self.player.y < WALL_THICKNESS:
-            self.player.y = WALL_THICKNESS
-        elif self.player.y > TOWN_TOTAL_HEIGHT - WALL_THICKNESS - self.player.height:
-            self.player.y = TOWN_TOTAL_HEIGHT - WALL_THICKNESS - self.player.height
-            self.player.x = WALL_THICKNESS
-        elif self.player.x + self.player.width > TOWN_TOTAL_WIDTH - WALL_THICKNESS:
-            self.player.x = TOWN_TOTAL_WIDTH - WALL_THICKNESS - self.player.width
-
-        if self.player.y < WALL_THICKNESS:
-            self.player.y = WALL_THICKNESS
-        elif self.player.y + self.player.height > TOWN_TOTAL_HEIGHT - WALL_THICKNESS:
-            self.player.y = TOWN_TOTAL_HEIGHT - WALL_THICKNESS - self.player.height
+        if self.player.y < 0:
+            self.player.y = 0
+        elif self.player.y + self.player.height > map_height:
+            self.player.y = map_height - self.player.height
 
         # 更新玩家矩形位置
         self.player.rect.x = int(self.player.x)
         self.player.rect.y = int(self.player.y)
 
+    def _check_terrain_ecology_zones(self):
+        """
+        檢查玩家是否進入特定地形的生態區域\n
+        \n
+        根據 target.prompt.md 要求：\n
+        - 湖泊生態在 terrain code 2 (水體) 區域\n
+        - 森林生態在 terrain code 1 (森林) 區域\n
+        - 玩家直接踏入這些區域即可體驗對應生態\n
+        """
+        player_pos = self.player.get_center_position()
+        
+        # 獲取玩家當前位置的地形類型
+        terrain_type = self.terrain_system.get_terrain_at_position(player_pos[0], player_pos[1])
+        
+        # 避免重複訊息，只在地形類型改變時顯示
+        if not hasattr(self, 'last_terrain_type'):
+            self.last_terrain_type = None
+            
+        if terrain_type != self.last_terrain_type:
+            if terrain_type == 1:  # 森林區域
+                # 玩家進入森林生態區域
+                print("🌲 進入森林生態區域 - Stevens Creek County Park 森林區")
+                # 這裡可以啟動森林相關的生態系統或效果
+                # 例如：顯示森林動物、改變音效、調整光線等
+                
+            elif terrain_type == 2:  # 水體區域  
+                # 玩家進入湖泊生態區域
+                print("🏞️ 進入湖泊生態區域 - Stevens Creek 溪流")
+                # 這裡可以啟動湖泊相關的生態系統或效果
+                # 例如：顯示水生動物、釣魚功能、水聲效果等
+                
+            elif terrain_type == 0:  # 草地區域
+                if self.last_terrain_type in [1, 2]:  # 從特殊生態區域離開
+                    print("🌱 回到普通草地區域")
+                    
+            self.last_terrain_type = terrain_type
+
     def _check_scene_transitions(self):
         """
-        檢查場景切換 - 檢查玩家是否接觸城門出入口\n
+        檢查場景切換 - 已移除傳送門功能\n
+        \n
+        根據 target.prompt.md 要求，移除場景傳送門\n
+        玩家現在通過直接踏入地形區域來體驗不同生態\n
         """
-        player_rect = self.player.rect
-
-        for transition in self.scene_transitions:
-            if player_rect.colliderect(transition["area"]):
-                target_scene = transition["target_scene"]
-
-                if target_scene == SCENE_HOME:
-                    # 回家可以直接傳送
-                    print(f"傳送回家: {transition['name']}")
-                    self.request_scene_change(target_scene)
-                    break
-                else:
-                    # 其他場景需要確認移動方向
-                    if self._is_player_moving_towards_transition(transition):
-                        print(f"步行前往: {transition['name']}")
-                        self.request_scene_change(target_scene)
-                        break
+        # 移除原有的場景切換邏輯
+        # 改由 _check_terrain_ecology_zones 處理生態區域體驗
+        pass
 
     def _is_player_moving_towards_transition(self, transition):
         """
@@ -844,50 +866,62 @@ class TownScene(Scene):
 
     def _check_building_interactions(self):
         """
-        檢查建築物互動\n
+        檢查建築物互動 - 使用地形系統\n
         """
         if self.input_controller.is_action_key_just_pressed("interact"):
             player_pos = self.player.get_center_position()
 
-            for building in self.buildings:
-                interaction_point = building["interaction_point"]
+            # 使用地形系統獲取附近的建築
+            nearby_buildings = self.terrain_system.get_buildings_in_area(player_pos, 60)
+
+            for building in nearby_buildings:
+                # 計算到建築中心的距離
+                building_center = (building.x + building.width // 2, building.y + building.height // 2)
                 distance = math.sqrt(
-                    (player_pos[0] - interaction_point[0]) ** 2
-                    + (player_pos[1] - interaction_point[1]) ** 2
+                    (player_pos[0] - building_center[0]) ** 2 +
+                    (player_pos[1] - building_center[1]) ** 2
                 )
 
                 if distance < 60:  # 互動範圍
-                    self._interact_with_building(building)
+                    self._interact_with_terrain_building(building)
                     break
 
-    def _interact_with_building(self, building):
+    def _interact_with_terrain_building(self, building):
         """
-        與建築物互動\n
+        與地形系統的建築物互動\n
         \n
         參數:\n
-        building (dict): 建築物資料\n
+        building (Building): 建築物物件\n
         """
-        building_type = building["type"]
-        building_name = building["name"]
+        building_type = building.building_type
+        building_name = building.name
 
         print(f"與{building_name}互動")
 
-        interaction_messages = {
-            "shop": "便利商店：歡迎光臨！想買些什麼嗎？",
-            "clothing_store": "服裝店：我們有最時尚的服裝！",
-            "tavern": "酒館：來杯飲料休息一下吧！",
-            "hospital": "醫院：需要醫療服務嗎？",
-            "gun_shop": "槍械店：合法的武器在這裡！",
-            "bank": "銀行：您需要金融服務嗎？",
-            "school": "學校：知識改變命運！",
-            "church": "教堂：願神保佑你！",
-            "park": "公園：享受大自然的美好！",
-            "house": "住宅：有人在家嗎？",
-            "office": "辦公大樓：商業活動繁忙中...",
-        }
+        # 根據建築類型執行不同的互動邏輯
+        if hasattr(building, 'interact'):
+            # 如果建築有自定義互動方法
+            result = building.interact(self.player)
+            if result.get('success'):
+                print(result.get('message', '互動成功'))
+            else:
+                print(result.get('message', '無法互動'))
+        else:
+            # 預設互動訊息
+            interaction_messages = {
+                "gun_shop": f"{building_name}：歡迎來到槍械店！需要武器嗎？",
+                "hospital": f"{building_name}：醫院為您服務，需要治療嗎？", 
+                "convenience_store": f"{building_name}：便利商店歡迎您！",
+                "church": f"{building_name}：願神保佑你！",
+                "fishing_shop": f"{building_name}：釣魚用品應有盡有！",
+                "market": f"{building_name}：新鮮商品，快來選購！",
+                "street_vendor": f"{building_name}：小攤販，便宜又好吃！",
+                "power_plant": f"{building_name}：電力供應中心，請勿靠近！",
+                "residential": f"{building_name}：這是私人住宅。"
+            }
 
-        message = interaction_messages.get(building_type, f"{building_name}：您好！")
-        print(message)
+            message = interaction_messages.get(building_type, f"{building_name}：您好！")
+            print(message)
 
     def _check_npc_interactions(self):
         """
@@ -904,7 +938,7 @@ class TownScene(Scene):
 
     def draw(self, screen):
         """
-        繪製大型小鎮場景\n
+        繪製大型小鎮場景 - 使用地形系統\n
         \n
         使用攝影機系統只繪製可見區域的內容\n
         \n
@@ -919,29 +953,31 @@ class TownScene(Scene):
             self.camera_x, self.camera_y, SCREEN_WIDTH, SCREEN_HEIGHT
         )
 
-        # 繪製格子地圖（人行道、斑馬線等）
-        self.tile_map.draw_debug(screen, self.camera_x, self.camera_y, show_grid=False)
+        # 繪製地形層（背景）
+        self.terrain_system.draw_terrain_layer(screen, self.camera_x, self.camera_y)
 
-        # 繪製城牆
-        self._draw_walls(screen, visible_rect)
+        # 繪製森林元素
+        self.terrain_system.draw_forest_elements(screen, self.camera_x, self.camera_y)
 
-        # 繪製道路網格（舊的簡單街道）
-        self._draw_streets(screen, visible_rect)
-
-        # 繪製新的道路系統（人行道、斑馬線、交通號誌）
-        self._draw_road_system(screen, visible_rect)
+        # 繪製水體元素
+        self.terrain_system.draw_water_elements(screen, self.camera_x, self.camera_y)
 
         # 繪製建築物
-        self._draw_buildings(screen, visible_rect)
+        self.terrain_system.draw_buildings(screen, self.camera_x, self.camera_y)
 
-        # 繪製載具系統
+        # 繪製停車場車輛
+        self.terrain_system.draw_vehicles(screen, self.camera_x, self.camera_y)
+
+        # 繪製道路系統（人行道、斑馬線、交通號誌）
+        self._draw_road_system(screen, visible_rect)
+
+        # 繪製載具系統（動態車輛）
         self._draw_vehicles(screen, visible_rect)
 
-        # 繪製場景切換區域（城門）
-        self._draw_scene_transitions(screen, visible_rect)
+        # 移除場景切換區域繪製（已刪除傳送門功能）
+        # self._draw_scene_transitions(screen, visible_rect)
 
         # 繪製 NPC（相對於攝影機位置）
-        # 傳遞實際的攝影機座標，而不是攝影機中心點
         self.npc_manager.draw(
             screen, (self.camera_x, self.camera_y), self.show_npc_info
         )
@@ -962,8 +998,32 @@ class TownScene(Scene):
         # 繪製 UI（固定在螢幕上）
         self._draw_ui(screen)
 
+        # 繪製時間顯示（螢幕頂部中央）
+        if self.time_manager:
+            self.time_ui.draw(screen, self.time_manager)
+
         # 繪製小地圖
         self._draw_minimap(screen)
+
+    def _draw_minimap(self, screen):
+        """
+        繪製小地圖\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        """
+        # 獲取玩家位置和面朝方向
+        player_x, player_y = self.player.get_position()
+        facing_direction = self.player.facing_direction
+        
+        # 獲取建築物資料
+        buildings = getattr(self.terrain_system, 'buildings', [])
+        
+        # 獲取地形資料（如果有的話）
+        terrain_data = getattr(self.terrain_system, 'terrain_data', None)
+        
+        # 繪製小地圖
+        self.minimap_ui.draw(screen, player_x, player_y, facing_direction, buildings, terrain_data)
 
     def _draw_walls(self, screen, visible_rect):
         """
@@ -1089,7 +1149,7 @@ class TownScene(Scene):
 
     def _draw_minimap(self, screen):
         """
-        繪製小地圖顯示玩家在城市中的位置\n
+        繪製小地圖顯示玩家在城市中的位置 - 使用地形系統\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -1104,41 +1164,21 @@ class TownScene(Scene):
         pygame.draw.rect(screen, (255, 255, 255), minimap_rect, 2)
 
         # 計算縮放比例
-        scale_x = minimap_size / TOWN_TOTAL_WIDTH
-        scale_y = minimap_size / TOWN_TOTAL_HEIGHT
+        map_width = self.terrain_system.map_width * self.terrain_system.tile_size
+        map_height = self.terrain_system.map_height * self.terrain_system.tile_size
+        scale_x = minimap_size / map_width
+        scale_y = minimap_size / map_height
 
-        # 繪製城牆
-        wall_thickness_scaled = max(1, int(WALL_THICKNESS * scale_x))
-        pygame.draw.rect(
-            screen,
-            WALL_COLOR,
-            (minimap_x, minimap_y, minimap_size, wall_thickness_scaled),
-        )
-        pygame.draw.rect(
-            screen,
-            WALL_COLOR,
-            (
-                minimap_x,
-                minimap_y + minimap_size - wall_thickness_scaled,
-                minimap_size,
-                wall_thickness_scaled,
-            ),
-        )
-        pygame.draw.rect(
-            screen,
-            WALL_COLOR,
-            (minimap_x, minimap_y, wall_thickness_scaled, minimap_size),
-        )
-        pygame.draw.rect(
-            screen,
-            WALL_COLOR,
-            (
-                minimap_x + minimap_size - wall_thickness_scaled,
-                minimap_y,
-                wall_thickness_scaled,
-                minimap_size,
-            ),
-        )
+        # 繪製地形縮圖
+        temp_minimap = pygame.Surface((minimap_size, minimap_size))
+        temp_minimap.fill((0, 0, 0))
+        
+        # 使用地形載入器繪製小地圖
+        scale = max(1, int(minimap_size / max(self.terrain_system.map_width, self.terrain_system.map_height)))
+        self.terrain_system.terrain_loader.render_minimap(temp_minimap, scale)
+        
+        # 將小地圖貼到螢幕上
+        screen.blit(temp_minimap, (minimap_x, minimap_y))
 
         # 繪製玩家位置
         player_minimap_x = minimap_x + int(self.player.x * scale_x)
@@ -1193,7 +1233,7 @@ class TownScene(Scene):
 
         # 顯示操作提示
         hint_text = self.font_manager.render_text(
-            "E: 互動 | 1-0: 選擇物品欄 | Tab: NPC資訊 | 走到邊界切換場景",
+            "E: 互動 | 1-0: 選擇物品欄 | Tab: NPC資訊 | 中鍵: 小地圖 | 滾輪: 縮放 | 走到邊界切換場景",
             DEFAULT_FONT_SIZE,
             (0, 0, 0),
         )
@@ -1255,6 +1295,18 @@ class TownScene(Scene):
         """
         # 讓輸入控制器處理事件
         action = self.input_controller.handle_event(event)
+
+        # 處理小地圖事件
+        if action == "middle_click":
+            # 中鍵點擊切換小地圖顯示
+            self.minimap_ui.toggle_visibility()
+            return True
+        elif action == "scroll_up" or action == "scroll_down":
+            # 滑鼠滾輪縮放小地圖 (只有在小地圖顯示時才有效)
+            if self.minimap_ui.is_visible:
+                scroll_direction = 1 if action == "scroll_up" else -1
+                self.minimap_ui.handle_scroll(scroll_direction)
+                return True
 
         # 處理鍵盤事件
         if event.type == pygame.KEYDOWN:

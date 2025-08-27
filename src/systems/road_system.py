@@ -98,25 +98,17 @@ class RoadSegment:
 
     def draw(self, screen):
         """
-        繪製道路段落\n
+        繪製道路段落 - 已移除視覺外觀但保留邏輯\n
+        \n
+        根據需求移除道路、人行道、紅綠燈的外觀\n
+        但保留必要的碰撞或功能邏輯\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        # 繪製路面
-        road_points = self.get_road_bounds()
-        pygame.draw.polygon(screen, self.surface_color, road_points)
-
-        # 繪製人行道
-        if self.has_sidewalk:
-            self._draw_sidewalks(screen)
-
-        # 繪製車道標線
-        self._draw_lane_markings(screen)
-
-        # 繪製斑馬線
-        if self.has_crosswalk:
-            self._draw_crosswalk(screen)
+        # 不再繪製任何道路視覺元素
+        # 道路的邏輯功能（碰撞檢測、導航等）仍然保留
+        pass
 
     def _draw_sidewalks(self, screen):
         """
@@ -382,21 +374,17 @@ class Intersection:
 
     def draw(self, screen):
         """
-        繪製路口\n
+        繪製路口 - 已移除視覺外觀但保留邏輯\n
+        \n
+        根據需求移除道路、人行道、紅綠燈的外觀\n
+        但保留必要的碰撞或功能邏輯\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        # 繪製路口地面
-        pygame.draw.rect(screen, (90, 90, 90), self.rect)
-
-        # 繪製斑馬線
-        for crosswalk_pos in self.crosswalks:
-            self._draw_crosswalk_at_position(screen, crosswalk_pos)
-
-        # 繪製交通號誌
-        if self.has_traffic_light:
-            self.traffic_light.draw(screen)
+        # 不再繪製任何路口視覺元素
+        # 路口的邏輯功能（交通號誌判斷、通行權等）仍然保留
+        pass
 
     def _draw_crosswalk_at_position(self, screen, position):
         """
@@ -561,33 +549,17 @@ class TrafficLight:
 
     def draw(self, screen):
         """
-        繪製交通號誌\n
+        繪製交通號誌 - 已移除視覺外觀但保留邏輯\n
+        \n
+        根據需求移除紅綠燈的外觀\n
+        但保留必要的邏輯功能（狀態判斷等）\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        # 繪製號誌柱
-        pole_rect = pygame.Rect(
-            self.position[0] - self.pole_width // 2,
-            self.position[1] - self.pole_height,
-            self.pole_width,
-            self.pole_height,
-        )
-        pygame.draw.rect(screen, (100, 100, 100), pole_rect)
-
-        # 繪製燈箱 - 南北向
-        self._draw_light_box(
-            screen,
-            (self.position[0] - 15, self.position[1] - self.pole_height - 10),
-            self.states["north_south"],
-        )
-
-        # 繪製燈箱 - 東西向
-        self._draw_light_box(
-            screen,
-            (self.position[0] + 15, self.position[1] - self.pole_height - 10),
-            self.states["east_west"],
-        )
+        # 不再繪製任何交通號誌視覺元素
+        # 交通號誌的邏輯功能（狀態轉換、通行判斷等）仍然保留
+        pass
 
     def _draw_light_box(self, screen, position, state):
         """

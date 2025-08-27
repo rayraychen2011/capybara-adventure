@@ -484,12 +484,12 @@ class TileMapManager:
         """
         import pygame
         
-        # 定義顏色
+        # 定義顏色 - 道路相關類型將被跳過繪製
         colors = {
             TileType.GRASS: (34, 139, 34),      # 森林綠
-            TileType.ROAD: (105, 105, 105),     # 暗灰色
-            TileType.SIDEWALK: (192, 192, 192), # 淺灰色
-            TileType.CROSSWALK: (255, 255, 0),  # 黃色
+            TileType.ROAD: (105, 105, 105),     # 暗灰色（不會被使用）
+            TileType.SIDEWALK: (192, 192, 192), # 淺灰色（不會被使用）
+            TileType.CROSSWALK: (255, 255, 0),  # 黃色（不會被使用）
             TileType.BUILDING: (139, 69, 19),   # 棕色
             TileType.BUILDABLE: (50, 205, 50),  # 亮綠色
         }
@@ -505,6 +505,10 @@ class TileMapManager:
             for grid_x in range(start_x, end_x):
                 tile = self.get_tile(grid_x, grid_y)
                 if tile:
+                    # 跳過道路相關的格子，不進行任何繪製
+                    if tile.tile_type in [TileType.ROAD, TileType.SIDEWALK, TileType.CROSSWALK]:
+                        continue
+                        
                     # 計算螢幕座標
                     screen_x = grid_x * self.grid_size - camera_x
                     screen_y = grid_y * self.grid_size - camera_y

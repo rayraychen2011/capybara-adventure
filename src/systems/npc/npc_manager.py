@@ -108,6 +108,10 @@ class NPCManager:
         參數:\n
         buildings (list): 建築物列表\n
         """
+        # 設定管理器的建築物引用，用於安全位置檢測
+        self.buildings = buildings
+        
+        # 為每個 NPC 設定建築物引用
         for npc in self.all_npcs:
             npc.set_buildings_reference(buildings)
         print(f"已為 {len(self.all_npcs)} 個 NPC 設定建築物碰撞檢測")
@@ -234,7 +238,8 @@ class NPCManager:
                 # 檢查是否與任何建築物重疊
                 safe_position = True
                 for building in self.buildings:
-                    if test_rect.colliderect(building["area"]):
+                    # 使用 Building 物件的 rect 屬性
+                    if test_rect.colliderect(building.rect):
                         safe_position = False
                         break
 

@@ -58,6 +58,13 @@ class InputController:
             pygame.K_LSHIFT: "run",  # 跑步（預留）
         }
 
+        # 滑鼠按鍵映射
+        self.mouse_action_keys = {
+            1: "left_click",    # 左鍵點擊
+            2: "middle_click",  # 中鍵點擊 - 開啟小地圖
+            3: "right_click",   # 右鍵點擊
+        }
+
         # 當前移動向量
         self.movement_vector = [0, 0]
 
@@ -67,7 +74,7 @@ class InputController:
         """
         處理單個輸入事件\n
         \n
-        處理按鍵按下和釋放事件\n
+        處理按鍵按下和釋放事件以及滑鼠事件\n
         觸發對應的遊戲動作\n
         \n
         參數:\n
@@ -101,6 +108,19 @@ class InputController:
             if event.key in self.movement_keys:
                 self._update_movement()
 
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            # 滑鼠按鍵按下
+            if event.button in self.mouse_action_keys:
+                action_triggered = self.mouse_action_keys[event.button]
+                print(f"觸發滑鼠動作: {action_triggered}")
+
+        elif event.type == pygame.MOUSEWHEEL:
+            # 滑鼠滾輪事件
+            if event.y > 0:
+                action_triggered = "scroll_up"
+            elif event.y < 0:
+                action_triggered = "scroll_down"
+
         return action_triggered
 
     def _update_movement(self):
@@ -128,46 +148,37 @@ class InputController:
 
     def update(self, dt):
         """
-        更新輸入控制器狀態 - 已優化效能\n
+        更新輸入控制器狀態 - 超高響應版本\n
         \n
-        每幀調用一次，使用高效的按鍵檢測提升響應速度\n
-        僅在移動狀態改變時更新玩家，減少不必要的計算\n
+        每幀調用一次，使用最快速的按鍵檢測實現最低延遲控制\n
+        目標延遲：不超過 0.03 秒 (約2幀的時間)\n
         \n
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
-        # 使用 Pygame 的連續按鍵檢測，獲得最佳響應速度
+        # 使用 Pygame 最快的按鍵檢測方法
         current_keys = pygame.key.get_pressed()
 
-        # 快速計算移動向量，針對常見組合進行優化
+        # 立即計算新的移動向量（零延遲處理）
         new_movement = [0, 0]
 
-        # 檢查垂直移動（優先檢查，減少分支）
+        # 垂直移動檢測 - 直接檢查最常用的按鍵
         if current_keys[pygame.K_w] or current_keys[pygame.K_UP]:
-            new_movement[1] -= 1
+            new_movement[1] = -1
         if current_keys[pygame.K_s] or current_keys[pygame.K_DOWN]:
             new_movement[1] += 1
 
-        # 檢查水平移動
+        # 水平移動檢測
         if current_keys[pygame.K_a] or current_keys[pygame.K_LEFT]:
-            new_movement[0] -= 1
+            new_movement[0] = -1
         if current_keys[pygame.K_d] or current_keys[pygame.K_RIGHT]:
             new_movement[0] += 1
 
-        # 只有移動向量改變時才更新玩家（減少不必要的函數調用）
-        if (
-            new_movement[0] != self.movement_vector[0]
-            or new_movement[1] != self.movement_vector[1]
-        ):
-            self.movement_vector = new_movement
-            # 直接設定玩家移動方向，避免額外的計算
-            self.player.set_movement_direction(
-                self.movement_vector[0], self.movement_vector[1]
-            )
-
-        # 檢查持續按住的功能鍵（較低優先級）
-        if current_keys[pygame.K_LSHIFT] or current_keys[pygame.K_c]:
-            self._handle_continuous_actions(dt)
+        # 立即更新玩家移動（移除所有不必要的檢查）
+        self.movement_vector = new_movement
+        self.player.set_movement_direction(
+            self.movement_vector[0], self.movement_vector[1]
+        )
 
         # 清除本幀剛按下的按鍵記錄
         self.keys_just_pressed.clear()

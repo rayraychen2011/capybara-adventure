@@ -94,6 +94,12 @@ class Building:
             self.services = ["電力供應"]
             self.staff_count = 30
 
+        elif self.building_type == "house":
+            self.name = "住宅"
+            self.color = (160, 82, 45)  # 淺棕色
+            self.services = ["居住"]
+            self.staff_count = 0
+
         else:
             self.name = "建築物"
             self.color = BUILDING_COLOR
@@ -199,13 +205,13 @@ class GunShop(Building):
     根據規格書要求，小鎮內外共有10座槍械店\n
     """
 
-    def __init__(self, position, size=(120, 80)):
+    def __init__(self, position, size=(60, 40)):
         """
         初始化槍械店\n
         \n
         參數:\n
         position (tuple): 位置 (x, y)\n
-        size (tuple): 尺寸 (width, height)\n
+        size (tuple): 尺寸 (width, height)（調整為配合新的玩家尺寸）\n
         """
         super().__init__("gun_shop", position, size)
 
@@ -325,13 +331,13 @@ class Hospital(Building):
     根據規格書要求，共有5座醫院\n
     """
 
-    def __init__(self, position, size=(150, 100)):
+    def __init__(self, position, size=(75, 50)):
         """
         初始化醫院\n
         \n
         參數:\n
         position (tuple): 位置 (x, y)\n
-        size (tuple): 尺寸 (width, height)\n
+        size (tuple): 尺寸 (width, height)（調整為配合新的玩家尺寸）\n
         """
         super().__init__("hospital", position, size)
 
@@ -397,22 +403,29 @@ class Hospital(Building):
         return {"success": True, "message": "您已在醫院重生"}
 
 
-######################建築管理器######################
-class BuildingManager:
+######################網格建築管理器######################
+class GridBuildingManager:
     """
-    建築管理器 - 統一管理所有建築物\n
+    網格建築管理器 - 基於網格系統管理建築物\n
     \n
-    負責建築物的創建、更新、互動檢測等功能\n
-    根據規格書要求配置正確數量的各類建築\n
+    實現新的地圖格規則：\n
+    - 一格大小為玩家的 216 倍\n
+    - 住宅：長寬至少玩家的 5 倍，每格最多 6 個\n
+    - 商業建築：長寬至少玩家的 7 倍，每格最多 4 個\n
+    - 建築之間必須保有通行間隙\n
     """
 
     def __init__(self):
         """
-        初始化建築管理器\n
+        初始化網格建築管理器\n
         """
+        # 建築物列表
         self.buildings = []
         self.buildings_by_type = {}
-
+        
+        # 網格系統 - 儲存每個網格的建築物
+        self.grid_buildings = {}  # {(grid_x, grid_y): {"residential": [], "commercial": []}}
+        
         # 建築統計
         self.building_counts = {
             "gun_shop": 0,
@@ -425,7 +438,234 @@ class BuildingManager:
             "power_plant": 0,
         }
 
-        print("建築管理器初始化完成")
+        print("網格建築管理器初始化完成")
+
+    def get_grid_position(self, world_x, world_y):
+        """
+        獲取世界座標對應的網格位置\n
+        \n
+        參數:\n
+        world_x (float): 世界座標 X\n
+        world_y (float): 世界座標 Y\n
+        \n
+        回傳:\n
+        tuple: (grid_x, grid_y) 網格座標\n
+        """
+        grid_x = int(world_x // GRID_SIZE)
+        grid_y = int(world_y // GRID_SIZE)
+        return (grid_x, grid_y)
+
+    def get_grid_bounds(self, grid_x, grid_y):
+        """
+        獲取網格的邊界座標\n
+        \n
+        參數:\n
+        grid_x (int): 網格 X 座標\n
+        grid_y (int): 網格 Y 座標\n
+        \n
+        回傳:\n
+        tuple: (min_x, min_y, max_x, max_y) 網格邊界\n
+        """
+        min_x = grid_x * GRID_SIZE
+        min_y = grid_y * GRID_SIZE
+        max_x = min_x + GRID_SIZE
+        max_y = min_y + GRID_SIZE
+        return (min_x, min_y, max_x, max_y)
+
+    def can_place_building(self, grid_x, grid_y, building_type, building_width, building_height):
+        """
+        檢查是否可以在指定網格放置建築\n
+        \n
+        參數:\n
+        grid_x (int): 網格 X 座標\n
+        grid_y (int): 網格 Y 座標\n
+        building_type (str): 建築類型 ("residential" 或 "commercial")\n
+        building_width (int): 建築寬度\n
+        building_height (int): 建築高度\n
+        \n
+        回傳:\n
+        bool: 是否可以放置\n
+        """
+        # 檢查建築尺寸是否符合最小要求
+        if building_type == "residential":
+            min_size = RESIDENTIAL_MIN_SIZE
+            max_buildings = RESIDENTIAL_MAX_PER_GRID
+        elif building_type == "commercial":
+            min_size = COMMERCIAL_MIN_SIZE
+            max_buildings = COMMERCIAL_MAX_PER_GRID
+        else:
+            return False
+
+        if building_width < min_size or building_height < min_size:
+            return False
+
+        # 檢查網格是否存在
+        grid_key = (grid_x, grid_y)
+        if grid_key not in self.grid_buildings:
+            self.grid_buildings[grid_key] = {"residential": [], "commercial": []}
+
+        # 檢查該類型建築數量是否已達上限
+        current_count = len(self.grid_buildings[grid_key][building_type])
+        if current_count >= max_buildings:
+            return False
+
+        return True
+
+    def find_placement_position(self, grid_x, grid_y, building_type, building_width, building_height):
+        """
+        在網格內尋找合適的建築放置位置\n
+        \n
+        參數:\n
+        grid_x (int): 網格 X 座標\n
+        grid_y (int): 網格 Y 座標\n
+        building_type (str): 建築類型\n
+        building_width (int): 建築寬度\n
+        building_height (int): 建築高度\n
+        \n
+        回傳:\n
+        tuple: (x, y) 建築位置，如果找不到則回傳 None\n
+        """
+        min_x, min_y, max_x, max_y = self.get_grid_bounds(grid_x, grid_y)
+        
+        # 設定間隙
+        spacing = RESIDENTIAL_SPACING if building_type == "residential" else COMMERCIAL_SPACING
+        
+        # 獲取網格內已有的建築
+        grid_key = (grid_x, grid_y)
+        if grid_key not in self.grid_buildings:
+            self.grid_buildings[grid_key] = {"residential": [], "commercial": []}
+        
+        existing_buildings = []
+        existing_buildings.extend(self.grid_buildings[grid_key]["residential"])
+        existing_buildings.extend(self.grid_buildings[grid_key]["commercial"])
+        
+        # 嘗試多個位置
+        attempts = 50  # 最多嘗試50次
+        for _ in range(attempts):
+            # 隨機選擇位置，但確保不超出網格邊界
+            x = random.randint(min_x + spacing, max_x - building_width - spacing)
+            y = random.randint(min_y + spacing, max_y - building_height - spacing)
+            
+            # 檢查與其他建築的衝突
+            new_rect = pygame.Rect(x, y, building_width, building_height)
+            collision = False
+            
+            for existing_building in existing_buildings:
+                existing_rect = pygame.Rect(
+                    existing_building["x"] - spacing,
+                    existing_building["y"] - spacing,
+                    existing_building["width"] + 2 * spacing,
+                    existing_building["height"] + 2 * spacing
+                )
+                
+                if new_rect.colliderect(existing_rect):
+                    collision = True
+                    break
+            
+            if not collision:
+                return (x, y)
+        
+        # 如果隨機放置失敗，嘗試網格式放置
+        return self._grid_placement(grid_x, grid_y, building_type, building_width, building_height)
+
+    def _grid_placement(self, grid_x, grid_y, building_type, building_width, building_height):
+        """
+        使用網格式放置算法\n
+        \n
+        參數:\n
+        grid_x (int): 網格 X 座標\n
+        grid_y (int): 網格 Y 座標\n
+        building_type (str): 建築類型\n
+        building_width (int): 建築寬度\n
+        building_height (int): 建築高度\n
+        \n
+        回傳:\n
+        tuple: (x, y) 建築位置，如果找不到則回傳 None\n
+        """
+        min_x, min_y, max_x, max_y = self.get_grid_bounds(grid_x, grid_y)
+        spacing = RESIDENTIAL_SPACING if building_type == "residential" else COMMERCIAL_SPACING
+        
+        # 計算可用空間
+        available_width = GRID_SIZE - 2 * spacing
+        available_height = GRID_SIZE - 2 * spacing
+        
+        # 計算可以放置的建築數量
+        if building_type == "residential":
+            # 住宅嘗試 2x3 或 3x2 排列
+            cols = 3 if available_width >= 3 * (building_width + spacing) else 2
+            rows = 2 if cols == 3 else 3
+        else:  # commercial
+            # 商業建築嘗試 2x2 排列
+            cols = 2
+            rows = 2
+        
+        # 計算每個建築的放置位置
+        grid_key = (grid_x, grid_y)
+        existing_count = len(self.grid_buildings[grid_key][building_type])
+        
+        if existing_count >= cols * rows:
+            return None
+        
+        # 計算當前建築應該放在第幾個位置
+        pos_index = existing_count
+        col = pos_index % cols
+        row = pos_index // cols
+        
+        # 計算實際座標
+        cell_width = available_width // cols
+        cell_height = available_height // rows
+        
+        x = min_x + spacing + col * cell_width + (cell_width - building_width) // 2
+        y = min_y + spacing + row * cell_height + (cell_height - building_height) // 2
+        
+        # 確保建築不超出網格
+        x = max(min_x + spacing, min(x, max_x - building_width - spacing))
+        y = max(min_y + spacing, min(y, max_y - building_height - spacing))
+        
+        return (x, y)
+
+    def place_building(self, building, grid_x, grid_y, building_type):
+        """
+        在網格中放置建築\n
+        \n
+        參數:\n
+        building (Building): 建築物件\n
+        grid_x (int): 網格 X 座標\n
+        grid_y (int): 網格 Y 座標\n
+        building_type (str): 建築類型\n
+        \n
+        回傳:\n
+        bool: 是否成功放置\n
+        """
+        # 檢查是否可以放置
+        if not self.can_place_building(grid_x, grid_y, building_type, building.width, building.height):
+            return False
+        
+        # 尋找放置位置
+        position = self.find_placement_position(grid_x, grid_y, building_type, building.width, building.height)
+        if position is None:
+            return False
+        
+        # 更新建築位置
+        building.x, building.y = position
+        building.rect.x = building.x
+        building.rect.y = building.y
+        
+        # 添加到網格記錄
+        grid_key = (grid_x, grid_y)
+        building_info = {
+            "building": building,
+            "x": building.x,
+            "y": building.y,
+            "width": building.width,
+            "height": building.height
+        }
+        self.grid_buildings[grid_key][building_type].append(building_info)
+        
+        # 添加到建築管理器
+        self._add_building(building)
+        
+        return True
 
     def create_buildings_for_town(self, town_bounds):
         """
@@ -436,97 +676,104 @@ class BuildingManager:
         """
         tx, ty, tw, th = town_bounds
 
-        # 創建醫院 (5座)
-        self._create_hospitals(town_bounds)
+        # 計算小鎮包含的網格範圍
+        start_grid_x, start_grid_y = self.get_grid_position(tx, ty)
+        end_grid_x, end_grid_y = self.get_grid_position(tx + tw, ty + th)
 
-        # 創建槍械店 (10座)
-        self._create_gun_shops(town_bounds)
+        # 創建住宅建築（使用網格系統）
+        self._create_residential_buildings(start_grid_x, start_grid_y, end_grid_x, end_grid_y)
 
-        # 創建便利商店 (15座)
-        self._create_convenience_stores(town_bounds)
-
-        # 創建教堂 (2座)
-        self._create_churches(town_bounds)
-
-        # 創建其他建築
-        self._create_other_buildings(town_bounds)
+        # 創建商業建築（使用網格系統）
+        self._create_commercial_buildings(start_grid_x, start_grid_y, end_grid_x, end_grid_y)
 
         print(f"建築創建完成，總計 {len(self.buildings)} 座建築")
 
-    def _create_hospitals(self, town_bounds):
+    def _create_residential_buildings(self, start_grid_x, start_grid_y, end_grid_x, end_grid_y):
         """
-        創建醫院\n
+        創建住宅建築\n
         """
-        tx, ty, tw, th = town_bounds
+        residential_created = 0
+        target_count = HOUSE_COUNT
 
-        for i in range(HOSPITAL_COUNT):
-            # 分散在小鎮各處
-            x = tx + (i % 3) * (tw // 3) + random.randint(50, 100)
-            y = ty + (i // 3) * (th // 2) + random.randint(50, 100)
+        for grid_y in range(start_grid_y, end_grid_y):
+            for grid_x in range(start_grid_x, end_grid_x):
+                if residential_created >= target_count:
+                    break
 
-            hospital = Hospital((x, y))
-            self._add_building(hospital)
+                # 每個網格最多放置6個住宅
+                buildings_in_grid = min(RESIDENTIAL_MAX_PER_GRID, target_count - residential_created)
+                
+                for i in range(buildings_in_grid):
+                    # 住宅尺寸：使用設定檔中的住宅尺寸（玩家的5倍）
+                    width = random.randint(RESIDENTIAL_MIN_SIZE, RESIDENTIAL_MIN_SIZE + 20)
+                    height = random.randint(RESIDENTIAL_HEIGHT, RESIDENTIAL_HEIGHT + 15)
+                    
+                    # 創建住宅
+                    house = Building("house", (0, 0), (width, height))
+                    
+                    # 嘗試放置在網格中
+                    if self.place_building(house, grid_x, grid_y, "residential"):
+                        residential_created += 1
+                    else:
+                        break  # 如果無法放置，跳到下一個網格
 
-    def _create_gun_shops(self, town_bounds):
+            if residential_created >= target_count:
+                break
+
+        print(f"創建了 {residential_created} 座住宅建築")
+
+    def _create_commercial_buildings(self, start_grid_x, start_grid_y, end_grid_x, end_grid_y):
         """
-        創建槍械店\n
+        創建商業建築\n
         """
-        tx, ty, tw, th = town_bounds
+        # 要創建的商業建築類型和數量
+        commercial_types = [
+            ("hospital", HOSPITAL_COUNT),
+            ("gun_shop", GUN_SHOP_COUNT),
+            ("convenience_store", CONVENIENCE_STORE_COUNT),
+            ("church", CHURCH_COUNT),
+            ("market", 1),
+            ("power_plant", 1),
+        ]
 
-        for i in range(GUN_SHOP_COUNT):
-            x = tx + random.randint(50, tw - 150)
-            y = ty + random.randint(50, th - 100)
+        for building_type, count in commercial_types:
+            created = 0
+            
+            for grid_y in range(start_grid_y, end_grid_y):
+                for grid_x in range(start_grid_x, end_grid_x):
+                    if created >= count:
+                        break
 
-            gun_shop = GunShop((x, y))
-            self._add_building(gun_shop)
+                    # 商業建築尺寸：長寬至少為玩家的7倍（調整為更合理的尺寸）
+                    if building_type == "hospital":
+                        width, height = 80, 60  # 醫院較大
+                    elif building_type == "church":
+                        width, height = 90, 70  # 教堂較大
+                    elif building_type == "market":
+                        width, height = 100, 80  # 市場最大
+                    elif building_type == "power_plant":
+                        width, height = 95, 75  # 電力場較大
+                    else:
+                        # 其他商業建築
+                        width = random.randint(COMMERCIAL_MIN_SIZE, COMMERCIAL_MIN_SIZE + 30)
+                        height = random.randint(COMMERCIAL_MIN_SIZE, COMMERCIAL_MIN_SIZE + 25)
 
-    def _create_convenience_stores(self, town_bounds):
-        """
-        創建便利商店\n
-        """
-        tx, ty, tw, th = town_bounds
+                    # 創建建築
+                    if building_type == "hospital":
+                        building = Hospital((0, 0), (width, height))
+                    elif building_type == "gun_shop":
+                        building = GunShop((0, 0), (width, height))
+                    else:
+                        building = Building(building_type, (0, 0), (width, height))
 
-        for i in range(CONVENIENCE_STORE_COUNT):
-            x = tx + random.randint(30, tw - 120)
-            y = ty + random.randint(30, th - 80)
+                    # 嘗試放置在網格中
+                    if self.place_building(building, grid_x, grid_y, "commercial"):
+                        created += 1
 
-            store = Building("convenience_store", (x, y), (100, 60))
-            self._add_building(store)
+                if created >= count:
+                    break
 
-    def _create_churches(self, town_bounds):
-        """
-        創建教堂\n
-        """
-        tx, ty, tw, th = town_bounds
-
-        for i in range(CHURCH_COUNT):
-            x = tx + (i * tw // 2) + tw // 4 - 75
-            y = ty + th // 4
-
-            church = Building("church", (x, y), (150, 120))
-            self._add_building(church)
-
-    def _create_other_buildings(self, town_bounds):
-        """
-        創建其他建築\n
-        """
-        tx, ty, tw, th = town_bounds
-
-        # 市場 (1座)
-        market = Building("market", (tx + tw // 2 - 100, ty + th // 2 - 75), (200, 150))
-        self._add_building(market)
-
-        # 電力場 (1座)
-        power_plant = Building("power_plant", (tx + tw - 200, ty + 50), (150, 100))
-        self._add_building(power_plant)
-
-        # 路邊小販 (10個)
-        for i in range(STREET_VENDOR_COUNT):
-            x = tx + random.randint(100, tw - 100)
-            y = ty + random.randint(100, th - 100)
-
-            vendor = Building("street_vendor", (x, y), (40, 40))
-            self._add_building(vendor)
+            print(f"創建了 {created} 座 {building_type} 建築")
 
     def _add_building(self, building):
         """
