@@ -73,6 +73,8 @@ class NPC:
         # 生活時間表
         self.schedule = ProfessionData.get_profession_schedule(profession)
         self.current_hour = 8  # 初始時間設為早上8點
+        self.current_day = 1  # 當前星期幾
+        self.is_workday = True  # 是否為工作日
 
         # 健康狀態
         self.is_injured = False
@@ -90,10 +92,16 @@ class NPC:
         # 特殊屬性
         self.assigned_area = None  # 電力工人的負責區域
         self.shop_id = None  # 商店員工的工作店鋪 ID
+        self.is_interacting_with_building = False  # 是否正在與建築物互動
 
         # 電力系統整合（電力工人專用）
         self.power_manager = None  # 電力管理器引用
         self.worker_id = None  # 在電力系統中的工人 ID
+
+        # 道路系統整合（路徑規劃用）
+        self.road_system = None  # 道路系統引用，用於智能路徑規劃
+        self.current_path = []  # 當前規劃的路徑點列表
+        self.path_index = 0  # 當前路徑點索引
 
         print(f"創建 NPC: {self.name} ({self.profession.value})")
 
@@ -402,6 +410,9 @@ class NPC:
             self.state = NPCState.MOVING
             return
 
+        # 檢查是否正在與工作場所建築物互動
+        self._check_building_interaction()
+
         # 根據職業執行特定工作行為
         if self.profession == Profession.POWER_WORKER:
             self._power_worker_behavior(dt)
@@ -496,18 +507,34 @@ class NPC:
 
     def _update_movement(self, dt):
         """
-        更新 NPC 移動\n
+        更新 NPC 移動，使用路徑點系統\n
         \n
         參數:\n
         dt (float): 時間間隔 (秒)\n
         """
-        # 計算到目標的距離
+        # 如果沒有路徑，直接返回
+        if not hasattr(self, "current_path") or not self.current_path:
+            return
+
+        # 檢查當前路徑點是否有效
+        if self.path_index >= len(self.current_path):
+            return
+
+        # 獲取當前目標路徑點
+        current_waypoint = self.current_path[self.path_index]
+        self.target_x, self.target_y = current_waypoint
+
+        # 記錄移動前的位置，用於碰撞檢測
+        prev_x = self.x
+        prev_y = self.y
+
+        # 計算到當前路徑點的距離
         dx = self.target_x - self.x
         dy = self.target_y - self.y
         distance = math.sqrt(dx * dx + dy * dy)
 
-        # 如果還沒到達目標
-        if distance > 2:  # 允許2像素的誤差
+        # 如果還沒到達當前路徑點
+        if distance > 5:  # 允許5像素的誤差
             # 正規化方向向量
             if distance > 0:
                 move_x = (dx / distance) * self.speed * dt * 60  # 60 用於幀率補償
@@ -516,21 +543,210 @@ class NPC:
                 # 更新位置
                 self.x += move_x
                 self.y += move_y
+
+                # 檢查碰撞並修正位置
+                if self._check_collision_with_environment():
+                    # 如果發生碰撞，回到上一個位置
+                    self.x = prev_x
+                    self.y = prev_y
+
+                    # 嘗試只在 X 方向移動
+                    self.x += move_x
+                    if self._check_collision_with_environment():
+                        self.x = prev_x  # X 方向也有碰撞，恢復 X
+
+                        # 嘗試只在 Y 方向移動
+                        self.y += move_y
+                        if self._check_collision_with_environment():
+                            self.y = prev_y  # Y 方向也有碰撞，完全恢復
+                            # 設定新的目標，避免卡住
+                            self._find_alternative_target()
         else:
-            # 到達目標
+            # 到達當前路徑點，移動到下一個
             self.x = self.target_x
             self.y = self.target_y
+            self.path_index += 1
+
+            # 如果已經完成所有路徑點，停止移動
+            if self.path_index >= len(self.current_path):
+                self.current_path = []
+                self.path_index = 0
+
+    def _check_collision_with_environment(self):
+        """
+        檢查 NPC 是否與環境物件（建築物）發生碰撞\n
+        \n
+        回傳:\n
+        bool: True 表示發生碰撞，False 表示沒有碰撞\n
+        """
+        # 如果沒有建築物管理器，跳過碰撞檢測
+        if not hasattr(self, "buildings") or not self.buildings:
+            return False
+
+        # 建立 NPC 的碰撞矩形
+        npc_rect = pygame.Rect(
+            self.x - self.size, self.y - self.size, self.size * 2, self.size * 2
+        )
+
+        # 檢查與所有建築物的碰撞
+        for building in self.buildings:
+            if npc_rect.colliderect(building["area"]):
+                return True
+
+        return False
+
+    def _find_alternative_target(self):
+        """
+        當原目標無法到達時，尋找替代目標\n
+        \n
+        在目前位置附近隨機選擇一個新的目標點\n
+        確保 NPC 不會卡在同一個位置\n
+        """
+        # 在當前位置附近尋找新目標
+        attempts = 0
+        max_attempts = 10
+
+        while attempts < max_attempts:
+            # 在較小範圍內隨機選擇新目標
+            angle = random.uniform(0, 2 * math.pi)
+            distance = random.uniform(30, 80)  # 較小的移動距離
+
+            new_target_x = self.x + distance * math.cos(angle)
+            new_target_y = self.y + distance * math.sin(angle)
+
+            # 簡單檢查新目標是否可行（不在建築物內）
+            temp_x, temp_y = self.x, self.y
+            self.x, self.y = new_target_x, new_target_y
+
+            if not self._check_collision_with_environment():
+                # 新目標可行，設定為新目標
+                self.target_x = new_target_x
+                self.target_y = new_target_y
+                self.x, self.y = temp_x, temp_y  # 恢復原位置
+                return
+
+            self.x, self.y = temp_x, temp_y  # 恢復原位置
+            attempts += 1
+
+        # 如果找不到替代目標，停在原地
+        self.target_x = self.x
+        self.target_y = self.y
+
+    def set_buildings_reference(self, buildings):
+        """
+        設定建築物參考，用於碰撞檢測\n
+        \n
+        參數:\n
+        buildings (list): 建築物列表\n
+        """
+        self.buildings = buildings
+
+    def _check_building_interaction(self):
+        """
+        檢查 NPC 是否正在與建築物互動\n
+        \n
+        當 NPC 與工作場所或其他可互動建築物重疊時\n
+        設定為互動狀態，這會讓 NPC 隱藏起來\n
+        """
+        if not hasattr(self, "buildings") or not self.buildings:
+            self.is_interacting_with_building = False
+            return
+
+        # 建立 NPC 的碰撞矩形
+        npc_rect = pygame.Rect(self.x - 10, self.y - 10, 20, 20)
+
+        # 檢查與所有建築物的重疊
+        for building in self.buildings:
+            if npc_rect.colliderect(building["area"]):
+                # NPC 與建築物重疊，表示正在互動
+                self.is_interacting_with_building = True
+                return
+
+        # 沒有與任何建築物重疊
+        self.is_interacting_with_building = False
 
     def _set_target_position(self, position):
         """
-        設定移動目標位置\n
+        設定移動目標位置，使用智能路徑規劃\n
         \n
         參數:\n
         position (tuple): 目標位置 (x, y)\n
         """
         self.target_x, self.target_y = position
+
+        # 如果有道路系統，嘗試規劃沿路徑移動
+        if hasattr(self, "road_system") and self.road_system:
+            self._plan_path_using_roads(position)
+        else:
+            # 沒有道路系統時使用直線移動
+            self.current_path = [position]
+            self.path_index = 0
+
         if not self._is_at_target():
             self.state = NPCState.MOVING
+
+    def _plan_path_using_roads(self, target_position):
+        """
+        使用道路系統規劃路徑\n
+        \n
+        參數:\n
+        target_position (tuple): 目標位置 (x, y)\n
+        """
+        try:
+            # 尋找當前位置和目標位置最近的道路點
+            current_pos = (self.x, self.y)
+            current_road = self.road_system.get_nearest_road(current_pos)
+            target_road = self.road_system.get_nearest_road(target_position)
+
+            if current_road and target_road:
+                # 如果當前位置和目標都在道路附近，規劃沿道路的路徑
+                self._create_road_based_path(
+                    current_pos, target_position, current_road, target_road
+                )
+            else:
+                # 如果沒有找到適合的道路，使用直線路徑
+                self.current_path = [target_position]
+                self.path_index = 0
+
+        except Exception as e:
+            # 路徑規劃失敗時使用直線移動
+            print(f"路徑規劃失敗: {e}")
+            self.current_path = [target_position]
+            self.path_index = 0
+
+    def _create_road_based_path(self, start_pos, target_pos, start_road, target_road):
+        """
+        創建基於道路的移動路徑\n
+        \n
+        參數:\n
+        start_pos (tuple): 起始位置\n
+        target_pos (tuple): 目標位置\n
+        start_road (RoadSegment): 起始道路\n
+        target_road (RoadSegment): 目標道路\n
+        """
+        path_points = []
+
+        # 添加到最近道路的中點
+        start_road_center = (
+            (start_road.start_pos[0] + start_road.end_pos[0]) / 2,
+            (start_road.start_pos[1] + start_road.end_pos[1]) / 2,
+        )
+
+        # 如果不是同一條道路，添加中間路徑點
+        if start_road != target_road:
+            target_road_center = (
+                (target_road.start_pos[0] + target_road.end_pos[0]) / 2,
+                (target_road.start_pos[1] + target_road.end_pos[1]) / 2,
+            )
+
+            # 簡單的路徑：當前位置 -> 起始道路中點 -> 目標道路中點 -> 目標位置
+            path_points = [start_road_center, target_road_center, target_pos]
+        else:
+            # 同一條道路，直接前往目標
+            path_points = [target_pos]
+
+        self.current_path = path_points
+        self.path_index = 0
 
     def _set_random_wander_target(self):
         """
@@ -676,6 +892,102 @@ class NPC:
         """
         return (self.x, self.y)
 
+    def get_status_info(self):
+        """
+        獲取 NPC 的詳細狀態資訊\n
+        \n
+        回傳:\n
+        dict: 包含 NPC 詳細資訊的字典\n
+        """
+        # 計算當前活動描述
+        current_activity = self._get_current_activity_description()
+
+        # 計算下一個活動
+        next_activity = self._get_next_activity_description()
+
+        # 格式化位置資訊
+        position_str = f"({int(self.x)}, {int(self.y)})"
+
+        return {
+            "name": self.name,
+            "profession": self.profession.value,
+            "position": position_str,
+            "current_state": self.state.value,
+            "current_activity": current_activity,
+            "next_activity": next_activity,
+            "is_injured": self.is_injured,
+            "health_status": "住院中" if self.is_injured else "健康",
+            "is_hidden": self._should_hide_npc(),
+        }
+
+    def _get_current_activity_description(self):
+        """
+        獲取當前活動的中文描述\n
+        \n
+        回傳:\n
+        str: 當前活動描述\n
+        """
+        if self.is_injured:
+            return f"在醫院治療中 (剩餘 {int(self.hospital_stay_time)} 小時)"
+
+        if self.state == NPCState.SLEEPING:
+            return "在家中睡覺"
+        elif self.state == NPCState.WORKING:
+            if self.profession == Profession.POWER_WORKER and self.assigned_area:
+                return f"在區域 {self.assigned_area} 巡查電力設施"
+            elif self.profession == Profession.FARMER:
+                return "在農田工作"
+            elif self.profession == Profession.HUNTER:
+                return "在森林狩獵"
+            elif (
+                hasattr(self, "is_interacting_with_building")
+                and self.is_interacting_with_building
+            ):
+                return f"在工作場所執行 {self.profession.value} 職務"
+            else:
+                return f"執行 {self.profession.value} 工作"
+        elif self.state == NPCState.RESTING:
+            return "休息中或下班時間"
+        elif self.state == NPCState.MOVING:
+            return f"前往目標位置 ({int(self.target_x)}, {int(self.target_y)})"
+        elif self.state == NPCState.IDLE:
+            if not self.is_workday:
+                return "休息日閒逛中"
+            else:
+                return "待機中"
+        else:
+            return self.state.value
+
+    def _get_next_activity_description(self):
+        """
+        獲取下一個活動的描述\n
+        \n
+        回傳:\n
+        str: 下一個活動描述\n
+        """
+        if self.is_injured:
+            return "康復後回到工作崗位"
+
+        if not hasattr(self, "current_hour"):
+            return "等待時間更新"
+
+        current_hour = self.current_hour
+
+        # 根據當前時間和狀態預測下一個活動
+        if current_hour < 6 or current_hour >= 22:
+            return "繼續睡覺直到早上 6 點"
+        elif self.state == NPCState.SLEEPING:
+            return "早上 6 點起床"
+        elif not self.is_workday:
+            return "繼續休息日活動"
+        elif current_hour < 9:
+            return "9 點開始工作"
+        elif 9 <= current_hour < 17:
+            work_end = self.schedule.get("work_end", 17)
+            return f"{work_end} 點下班回家"
+        else:
+            return "22 點準備睡覺"
+
     def get_rect(self):
         """
         獲取 NPC 的碰撞矩形\n
@@ -687,21 +999,31 @@ class NPC:
             self.x - self.size // 2, self.y - self.size // 2, self.size, self.size
         )
 
-    def draw(self, screen):
+    def draw(self, screen, camera_x=0, camera_y=0):
         """
         繪製 NPC\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        camera_x (float): 攝影機 X 偏移量\n
+        camera_y (float): 攝影機 Y 偏移量\n
         """
         # 根據狀態調整顯示
         if self.is_injured:
             # 受傷的 NPC 不在場景中顯示（在醫院）
             return
 
+        # 檢查工作狀態，某些工作狀態下 NPC 不顯示
+        if self._should_hide_npc():
+            return
+
+        # 計算在螢幕上的位置（世界座標轉螢幕座標）
+        screen_x = int(self.x - camera_x)
+        screen_y = int(self.y - camera_y)
+
         # 繪製 NPC 本體
-        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.size)
-        pygame.draw.circle(screen, (0, 0, 0), (int(self.x), int(self.y)), self.size, 2)
+        pygame.draw.circle(screen, self.color, (screen_x, screen_y), self.size)
+        pygame.draw.circle(screen, (0, 0, 0), (screen_x, screen_y), self.size, 2)
 
         # 根據狀態添加狀態指示器
         if self.state == NPCState.WORKING:
@@ -709,36 +1031,78 @@ class NPC:
             pygame.draw.rect(
                 screen,
                 (255, 255, 0),
-                (int(self.x) - 3, int(self.y) - self.size - 8, 6, 6),
+                (screen_x - 3, screen_y - self.size - 8, 6, 6),
             )
         elif self.state == NPCState.SLEEPING:
             # 睡覺中顯示 Z 符號效果
             pygame.draw.circle(
-                screen, (200, 200, 200), (int(self.x), int(self.y)), self.size - 2
+                screen, (200, 200, 200), (screen_x, screen_y), self.size - 2
             )
 
-    def draw_info(self, screen, font):
+    def _should_hide_npc(self):
+        """
+        判斷 NPC 是否應該隱藏（不在戶外顯示）\n
+        \n
+        包含以下情況：\n
+        1. 某些職業在工作時會進入建築物內部\n
+        2. NPC 在睡覺時會在家中，不在戶外顯示\n
+        3. NPC 在與建築物互動時會進入建築物內部\n
+        \n
+        回傳:\n
+        bool: True 表示應該隱藏，False 表示正常顯示\n
+        """
+        # 睡覺時 NPC 在家中，不在戶外顯示
+        if self.state == NPCState.SLEEPING:
+            return True
+
+        # 工作時某些職業會在建築物內部，不在戶外顯示
+        if self.state == NPCState.WORKING:
+            # 這些職業在工作時會在建築物內部，不在戶外顯示
+            indoor_work_professions = [
+                Profession.DOCTOR,  # 醫生在醫院內工作
+                Profession.PRIEST,  # 牧師在教堂內工作
+                Profession.GUN_SHOP_WORKER,  # 槍械店員工在店內工作
+                Profession.CONVENIENCE_STORE_WORKER,  # 便利商店員工在店內工作
+                Profession.FISHING_SHOP_WORKER,  # 釣魚店員工在店內工作
+                # 可以根據需要添加更多室內工作的職業
+            ]
+            return self.profession in indoor_work_professions
+
+        # 檢查是否正在與建築物互動（進入建築物內部）
+        if (
+            hasattr(self, "is_interacting_with_building")
+            and self.is_interacting_with_building
+        ):
+            return True
+
+        return False
+
+    def draw_info(self, screen, font, camera_x=0, camera_y=0):
         """
         繪製 NPC 資訊 (姓名等)\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         font (pygame.font.Font): 字體物件\n
+        camera_x (float): 攝影機 X 偏移量\n
+        camera_y (float): 攝影機 Y 偏移量\n
         """
-        if self.is_injured:
+        if self.is_injured or self._should_hide_npc():
             return
+
+        # 計算在螢幕上的位置（世界座標轉螢幕座標）
+        screen_x = int(self.x - camera_x)
+        screen_y = int(self.y - camera_y)
 
         # 繪製姓名
         name_surface = font.render(self.name, True, (0, 0, 0))
-        name_rect = name_surface.get_rect(
-            center=(int(self.x), int(self.y) - self.size - 15)
-        )
+        name_rect = name_surface.get_rect(center=(screen_x, screen_y - self.size - 15))
         screen.blit(name_surface, name_rect)
 
         # 繪製職業 (小字)
         profession_surface = font.render(self.profession.value, True, (100, 100, 100))
         profession_rect = profession_surface.get_rect(
-            center=(int(self.x), int(self.y) - self.size - 30)
+            center=(screen_x, screen_y - self.size - 30)
         )
         screen.blit(profession_surface, profession_rect)
 

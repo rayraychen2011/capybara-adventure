@@ -7,6 +7,7 @@ from src.core.state_manager import GameState
 from src.player.player import Player
 from src.player.input_controller import InputController
 from src.utils.font_manager import get_font_manager
+from src.utils.npc_info_ui import NPCInfoUI
 from src.systems.npc.npc_manager import NPCManager
 from src.systems.road_system import RoadManager
 from src.systems.vehicle_system import VehicleManager
@@ -78,6 +79,9 @@ class TownScene(Scene):
         )
         forest_bounds = (0, 0, SCREEN_WIDTH * 8, SCREEN_HEIGHT * 8)
 
+        # 為 NPC 管理器設定建築物參考（在創建 NPC 之前）
+        self.npc_manager.buildings = self.buildings
+
         # 初始化道路網絡
         self.road_manager.create_road_network_for_town(town_bounds)
 
@@ -88,8 +92,14 @@ class TownScene(Scene):
         if self.power_manager:
             self.power_manager.initialize_power_grid(town_bounds)
 
-        # 初始化所有 NPC
+        # 初始化所有 NPC（建築物已經存在）
         self.npc_manager.initialize_npcs(town_bounds, forest_bounds)
+
+        # 為 NPC 設定建築物參考，用於碰撞檢測
+        self.npc_manager.set_buildings_reference(self.buildings)
+
+        # 為 NPC 設定道路系統參考，用於智能路徑規劃
+        self.npc_manager.set_road_system_reference(self.road_manager)
 
         # 將電力工人註冊到電力系統
         if self.power_manager:
@@ -100,6 +110,9 @@ class TownScene(Scene):
 
         # NPC 資訊顯示控制
         self.show_npc_info = False
+
+        # NPC 資訊顯示器
+        self.npc_info_ui = NPCInfoUI()
 
         print("大型小鎮場景已建立 (30x30 街道)")
 
@@ -860,11 +873,10 @@ class TownScene(Scene):
         self._draw_scene_transitions(screen, visible_rect)
 
         # 繪製 NPC（相對於攝影機位置）
-        camera_position = (
-            self.camera_x + SCREEN_WIDTH // 2,
-            self.camera_y + SCREEN_HEIGHT // 2,
+        # 傳遞實際的攝影機座標，而不是攝影機中心點
+        self.npc_manager.draw(
+            screen, (self.camera_x, self.camera_y), self.show_npc_info
         )
-        self.npc_manager.draw(screen, camera_position, self.show_npc_info)
 
         # 繪製玩家角色（相對於攝影機位置）
         player_screen_x = self.player.x - self.camera_x
@@ -1122,6 +1134,10 @@ class TownScene(Scene):
         # 應用時間系統的視覺效果（天空顏色和光線遮罩）
         self._apply_time_visual_effects(screen)
 
+        # 顯示 NPC 資訊清單（如果開啟）
+        if self.show_npc_info:
+            self.npc_info_ui.draw(screen)
+
     def _apply_time_visual_effects(self, screen):
         """
         應用時間系統的視覺效果 - 天空顏色和光線遮罩\n
@@ -1174,9 +1190,22 @@ class TownScene(Scene):
 
         # 處理鍵盤事件
         if event.type == pygame.KEYDOWN:
+            # 如果 NPC 資訊顯示中，優先處理 UI 事件
+            if self.show_npc_info and self.npc_info_ui.handle_keydown(event):
+                return True
+
             if event.key == pygame.K_TAB:
                 # Tab 鍵切換 NPC 資訊顯示
                 self.show_npc_info = not self.show_npc_info
+
+                # 如果開啟 NPC 資訊，更新清單
+                if self.show_npc_info:
+                    player_pos = (self.player.x, self.player.y)
+                    npc_status_list = self.npc_manager.get_npc_status_list(
+                        player_pos, 1000
+                    )
+                    self.npc_info_ui.update_npc_list(npc_status_list)
+
                 return True
             elif event.key == pygame.K_e:
                 # E 鍵與載具互動

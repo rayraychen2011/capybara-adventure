@@ -4,6 +4,7 @@ import random
 import math
 from src.systems.npc.npc import NPC
 from src.systems.npc.profession import Profession, ProfessionData
+from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 
 ######################NPC 管理器######################
@@ -100,6 +101,28 @@ class NPCManager:
             f"NPC 創建完成: 小鎮 {len(self.town_npcs)} 個, 部落 {len(self.tribe_npcs)} 個, 總計 {len(self.all_npcs)} 個"
         )
 
+    def set_buildings_reference(self, buildings):
+        """
+        為所有 NPC 設定建築物參考，用於碰撞檢測\n
+        \n
+        參數:\n
+        buildings (list): 建築物列表\n
+        """
+        for npc in self.all_npcs:
+            npc.set_buildings_reference(buildings)
+        print(f"已為 {len(self.all_npcs)} 個 NPC 設定建築物碰撞檢測")
+
+    def set_road_system_reference(self, road_system):
+        """
+        為所有 NPC 設定道路系統參考，用於智能路徑規劃\n
+        \n
+        參數:\n
+        road_system (RoadSystem): 道路系統實例\n
+        """
+        for npc in self.all_npcs:
+            npc.road_system = road_system
+        print(f"已為 {len(self.all_npcs)} 個 NPC 設定道路系統路徑規劃")
+
     def _initialize_power_areas(self, town_bounds):
         """
         初始化 30 個電力區域\n
@@ -155,11 +178,10 @@ class NPCManager:
 
         # 創建 NPC
         for profession in town_professions:
-            # 在小鎮範圍內隨機位置創建 NPC
-            x = random.randint(town_x + 50, town_x + town_width - 50)
-            y = random.randint(town_y + 50, town_y + town_height - 50)
+            # 在小鎮範圍內隨機位置創建 NPC，避開建築物
+            position = self._find_safe_spawn_position(town_bounds)
 
-            npc = NPC(profession, (x, y))
+            npc = NPC(profession, position)
             self.town_npcs.append(npc)
 
             # 更新職業統計
@@ -168,6 +190,49 @@ class NPCManager:
             # 特殊處理電力工人
             if profession == Profession.POWER_WORKER:
                 self._assign_power_area_to_worker(npc)
+
+    def _find_safe_spawn_position(self, town_bounds, max_attempts=50):
+        """
+        尋找安全的生成位置，避開建築物\n
+        \n
+        參數:\n
+        town_bounds (tuple): 小鎮邊界\n
+        max_attempts (int): 最大嘗試次數\n
+        \n
+        回傳:\n
+        tuple: 安全的位置座標 (x, y)\n
+        """
+        town_x, town_y, town_width, town_height = town_bounds
+
+        for attempt in range(max_attempts):
+            # 在小鎮範圍內隨機選擇位置
+            x = random.randint(town_x + 50, town_x + town_width - 50)
+            y = random.randint(town_y + 50, town_y + town_height - 50)
+
+            # 檢查該位置是否與建築物重疊
+            if hasattr(self, "buildings") and self.buildings:
+                # 建立測試矩形
+                test_rect = pygame.Rect(x - 15, y - 15, 30, 30)  # NPC 大小約 30x30
+
+                # 檢查是否與任何建築物重疊
+                safe_position = True
+                for building in self.buildings:
+                    if test_rect.colliderect(building["area"]):
+                        safe_position = False
+                        break
+
+                if safe_position:
+                    return (x, y)
+            else:
+                # 如果還沒有建築物列表，直接返回隨機位置
+                return (x, y)
+
+        # 如果找不到安全位置，返回邊界內的隨機位置
+        print("警告：找不到安全的 NPC 生成位置，使用隨機位置")
+        return (
+            random.randint(town_x + 50, town_x + town_width - 50),
+            random.randint(town_y + 50, town_y + town_height - 50),
+        )
 
     def _create_tribe_npcs(self, forest_bounds):
         """
@@ -359,21 +424,70 @@ class NPCManager:
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
-        camera_position (tuple): 攝影機位置 (用於視野裁剪)\n
+        camera_position (tuple): 攝影機位置 (camera_x, camera_y)\n
         show_info (bool): 是否顯示 NPC 資訊\n
         """
+        # camera_position 現在直接是 (camera_x, camera_y)
+        camera_x, camera_y = camera_position
+
+        # 計算攝影機中心點用於範圍檢測
+        camera_center_x = camera_x + SCREEN_WIDTH // 2
+        camera_center_y = camera_y + SCREEN_HEIGHT // 2
+
         # 獲取需要渲染的 NPC
-        npcs_to_render = self._get_npcs_in_range(camera_position, self.render_distance)
+        npcs_to_render = self._get_npcs_in_range(
+            (camera_center_x, camera_center_y), self.render_distance
+        )
 
         # 繪製 NPC
         for npc in npcs_to_render:
-            npc.draw(screen)
+            npc.draw(screen, camera_x, camera_y)
 
         # 繪製 NPC 資訊 (可選)
         if show_info:
             font = pygame.font.Font(None, 16)
             for npc in npcs_to_render:
-                npc.draw_info(screen, font)
+                npc.draw_info(screen, font, camera_x, camera_y)
+
+    def get_npc_status_list(self, player_position=None, max_distance=500):
+        """
+        獲取 NPC 狀態清單用於顯示\n
+        \n
+        參數:\n
+        player_position (tuple): 玩家位置，用於距離篩選\n
+        max_distance (float): 最大顯示距離\n
+        \n
+        回傳:\n
+        list: NPC 狀態資訊清單\n
+        """
+        if player_position:
+            # 獲取玩家附近的 NPC
+            nearby_npcs = self._get_npcs_in_range(player_position, max_distance)
+        else:
+            # 顯示所有 NPC
+            nearby_npcs = self.all_npcs
+
+        # 獲取每個 NPC 的狀態資訊
+        npc_status_list = []
+        for npc in nearby_npcs:
+            status_info = npc.get_status_info()
+            # 計算與玩家的距離
+            if player_position:
+                distance = math.sqrt(
+                    (npc.x - player_position[0]) ** 2
+                    + (npc.y - player_position[1]) ** 2
+                )
+                status_info["distance"] = int(distance)
+            npc_status_list.append(status_info)
+
+        # 按距離排序（近的在前面）
+        if player_position:
+            npc_status_list.sort(key=lambda x: x["distance"])
+        else:
+            # 按姓名排序
+            npc_status_list.sort(key=lambda x: x["name"])
+
+        return npc_status_list
 
     def draw_power_grid_status(self, screen, font):
         """
