@@ -72,8 +72,11 @@ class Animal:
         self.target_y = self.y
         self.habitat_bounds = habitat_bounds
 
+        # 地形系統引用（用於檢查是否離開森林/水域）
+        self.terrain_system = None
+
         # 從動物資料獲取屬性
-        self.size = AnimalData.get_animal_property(animal_type, "size") or 16
+        self.size = AnimalData.get_animal_property(animal_type, "size") or 8  # 預設與玩家相同大小
         self.max_speed = AnimalData.get_animal_property(animal_type, "speed") or 2.0
         self.current_speed = self.max_speed
         self.max_health = AnimalData.get_animal_property(animal_type, "health") or 50
@@ -109,6 +112,45 @@ class Animal:
         self.drop_items = AnimalData.get_animal_loot(animal_type)
 
         print(f"創建動物: {animal_type.value} (ID: {self.id})")
+
+    def set_terrain_system(self, terrain_system):
+        """
+        設定地形系統引用，用於檢查棲息地邊界\n
+        \n
+        參數:\n
+        terrain_system (TerrainBasedSystem): 地形系統實例\n
+        """
+        self.terrain_system = terrain_system
+
+    def _is_in_valid_habitat(self, x, y):
+        """
+        檢查指定位置是否在有效棲息地內\n
+        \n
+        參數:\n
+        x (float): X座標\n
+        y (float): Y座標\n
+        \n
+        回傳:\n
+        bool: 如果在有效棲息地內則回傳True\n
+        """
+        if not self.terrain_system:
+            # 沒有地形系統時只檢查基本邊界
+            hx, hy, hw, hh = self.habitat_bounds
+            return hx <= x <= hx + hw and hy <= y <= hy + hh
+        
+        # 檢查地形類型
+        terrain_type = self.terrain_system.get_terrain_at_position(x, y)
+        
+        if self.habitat == "forest":
+            # 森林動物只能在森林區域（地形代碼1）活動
+            return terrain_type == 1
+        elif self.habitat == "lake":
+            # 湖泊動物只能在水域（地形代碼2）活動
+            return terrain_type == 2
+        else:
+            # 其他棲息地使用基本邊界檢查
+            hx, hy, hw, hh = self.habitat_bounds
+            return hx <= x <= hx + hw and hy <= y <= hy + hh
 
     def update(self, dt, player_position):
         """
@@ -348,14 +390,35 @@ class Animal:
 
     def _set_wander_target(self):
         """
-        設定隨機漫遊目標\n
+        設定隨機漫遊目標 - 確保目標在有效棲息地內\n
         """
         hx, hy, hw, hh = self.habitat_bounds
-
-        # 在棲息地範圍內選擇隨機點
         margin = 50  # 離邊界保持距離
-        self.target_x = random.randint(hx + margin, hx + hw - margin)
-        self.target_y = random.randint(hy + margin, hy + hh - margin)
+        
+        # 嘗試找到有效的漫遊目標
+        attempts = 0
+        max_attempts = 20
+        
+        while attempts < max_attempts:
+            # 在棲息地範圍內選擇隨機點
+            test_x = random.randint(hx + margin, hx + hw - margin)
+            test_y = random.randint(hy + margin, hy + hh - margin)
+            
+            # 檢查是否在有效棲息地內
+            if self._is_in_valid_habitat(test_x, test_y):
+                self.target_x = test_x
+                self.target_y = test_y
+                return
+            
+            attempts += 1
+        
+        # 如果找不到有效位置，使用當前位置附近的小範圍移動
+        self.target_x = self.x + random.randint(-30, 30)
+        self.target_y = self.y + random.randint(-30, 30)
+        
+        # 確保不超出基本邊界
+        self.target_x = max(hx + margin, min(hx + hw - margin, self.target_x))
+        self.target_y = max(hy + margin, min(hy + hh - margin, self.target_y))
 
     def _set_flee_target(self, player_position):
         """
@@ -393,7 +456,7 @@ class Animal:
 
     def _update_movement(self, dt):
         """
-        更新動物移動\n
+        更新動物移動 - 包含棲息地邊界檢查\n
         \n
         參數:\n
         dt (float): 時間間隔\n
@@ -414,10 +477,19 @@ class Animal:
                 move_x = (dx / distance) * move_distance
                 move_y = (dy / distance) * move_distance
 
-                self.x += move_x
-                self.y += move_y
+                # 計算新位置
+                new_x = self.x + move_x
+                new_y = self.y + move_y
 
-                # 確保不超出棲息地邊界
+                # 檢查新位置是否在有效棲息地內
+                if self._is_in_valid_habitat(new_x, new_y):
+                    self.x = new_x
+                    self.y = new_y
+                else:
+                    # 如果新位置超出棲息地，選擇新的隨機目標
+                    self._set_wander_target()
+                
+                # 確保不超出基本棲息地邊界（後備檢查）
                 hx, hy, hw, hh = self.habitat_bounds
                 self.x = max(hx, min(hx + hw, self.x))
                 self.y = max(hy, min(hy + hh, self.y))

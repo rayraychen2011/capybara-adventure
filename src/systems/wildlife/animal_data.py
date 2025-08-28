@@ -90,7 +90,7 @@ class AnimalData:
     ANIMAL_PROPERTIES = {
         # 森林小型動物
         AnimalType.RABBIT: {
-            "size": 12,
+            "size": 8,  # 與玩家相同大小
             "speed": 4.0,
             "health": 25,
             "threat_level": ThreatLevel.HARMLESS,
@@ -103,7 +103,7 @@ class AnimalData:
             "spawn_weight": 0.4,  # 高生成權重 - 常見
         },
         AnimalType.SQUIRREL: {
-            "size": 8,
+            "size": 8,  # 與玩家相同大小
             "speed": 3.5,
             "health": 15,
             "threat_level": ThreatLevel.HARMLESS,
@@ -116,7 +116,7 @@ class AnimalData:
             "spawn_weight": 0.35,  # 很常見
         },
         AnimalType.PHEASANT: {
-            "size": 14,
+            "size": 8,  # 與玩家相同大小
             "speed": 3.0,
             "health": 30,
             "threat_level": ThreatLevel.LOW,
@@ -129,7 +129,7 @@ class AnimalData:
             "spawn_weight": 0.3,
         },
         AnimalType.FOX: {
-            "size": 18,
+            "size": 8,  # 與玩家相同大小
             "speed": 4.0,
             "health": 50,
             "threat_level": ThreatLevel.LOW,
@@ -142,7 +142,7 @@ class AnimalData:
             "spawn_weight": 0.15,  # 較少見
         },
         AnimalType.BEAR: {
-            "size": 32,
+            "size": 8,  # 與玩家相同大小
             "speed": 2.5,
             "health": 150,
             "threat_level": ThreatLevel.HIGH,
@@ -156,7 +156,7 @@ class AnimalData:
         },
         # 森林一般動物
         AnimalType.DEER: {
-            "size": 24,
+            "size": 8,  # 與玩家相同大小
             "speed": 3.5,
             "health": 60,
             "threat_level": ThreatLevel.HARMLESS,
@@ -169,7 +169,7 @@ class AnimalData:
             "spawn_weight": 0.3,  # 生成權重
         },
         AnimalType.SHEEP: {
-            "size": 20,
+            "size": 8,  # 與玩家相同大小
             "speed": 2.5,
             "health": 45,
             "threat_level": ThreatLevel.HARMLESS,
@@ -182,7 +182,7 @@ class AnimalData:
             "spawn_weight": 0.25,
         },
         AnimalType.WILD_BOAR: {
-            "size": 22,
+            "size": 8,  # 與玩家相同大小
             "speed": 3.0,
             "health": 80,
             "threat_level": ThreatLevel.MEDIUM,
@@ -195,7 +195,7 @@ class AnimalData:
             "spawn_weight": 0.2,
         },
         AnimalType.WOLF: {
-            "size": 26,
+            "size": 8,  # 與玩家相同大小
             "speed": 4.5,
             "health": 100,
             "threat_level": ThreatLevel.HIGH,
@@ -208,7 +208,7 @@ class AnimalData:
             "spawn_weight": 0.15,
         },
         AnimalType.MOUNTAIN_LION: {
-            "size": 28,
+            "size": 8,  # 與玩家相同大小
             "speed": 5.0,
             "health": 120,
             "threat_level": ThreatLevel.HIGH,
@@ -222,7 +222,7 @@ class AnimalData:
         },
         # 保育類動物
         AnimalType.PANGOLIN: {
-            "size": 18,
+            "size": 8,  # 與玩家相同大小
             "speed": 1.5,
             "health": 40,
             "threat_level": ThreatLevel.HARMLESS,
@@ -235,7 +235,7 @@ class AnimalData:
             "spawn_weight": 0.05,  # 稀有
         },
         AnimalType.LEOPARD_CAT: {
-            "size": 16,
+            "size": 8,  # 與玩家相同大小
             "speed": 6.0,
             "health": 50,
             "threat_level": ThreatLevel.LOW,
@@ -248,7 +248,7 @@ class AnimalData:
             "spawn_weight": 0.03,  # 非常稀有
         },
         AnimalType.CLOUDED_LEOPARD: {
-            "size": 30,
+            "size": 8,  # 與玩家相同大小
             "speed": 5.5,
             "health": 90,
             "threat_level": ThreatLevel.MEDIUM,

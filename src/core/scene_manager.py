@@ -215,6 +215,16 @@ class SceneManager:
         參數:\n
         screen (pygame.Surface): 要繪製到的螢幕表面\n
         """
+        # 調試信息
+        if not hasattr(self, '_debug_draw_count'):
+            self._debug_draw_count = 0
+        self._debug_draw_count += 1
+        
+        if self._debug_draw_count % 30 == 0:  # 每30幀打印一次
+            current_name = self.current_scene.name if self.current_scene else "None"
+            is_active = self.current_scene.is_active if self.current_scene else False
+            print(f"SceneManager draw 調試 - 當前場景: {current_name}, 活躍: {is_active}")
+        
         if self.current_scene and self.current_scene.is_active:
             self.current_scene.draw(screen)
 

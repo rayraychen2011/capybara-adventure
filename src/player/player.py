@@ -22,7 +22,7 @@ class Player:
     使用幾何形狀暫代圖片素材，提供完整的角色功能\n
     """
 
-    def __init__(self, x=PLAYER_START_X, y=PLAYER_START_Y):
+    def __init__(self, x=None, y=None):
         """
         初始化玩家角色\n
         \n
@@ -30,13 +30,14 @@ class Player:
         建立物品欄系統和各種遊戲數據\n
         \n
         參數:\n
-        x (int): 初始 X 座標位置，預設為螢幕中央\n
-        y (int): 初始 Y 座標位置，預設為螢幕中央\n
+        x (int): 初始 X 座標位置，None 表示待設定（會在玩家之家設定）\n
+        y (int): 初始 Y 座標位置，None 表示待設定（會在玩家之家設定）\n
         """
         ######################位置和移動屬性######################
-        # 玩家當前位置
-        self.x = x
-        self.y = y
+        # 玩家當前位置 - 初始設為螢幕中心，稍後會移動到玩家之家
+        self.x = x if x is not None else SCREEN_WIDTH // 2
+        self.y = y if y is not None else SCREEN_HEIGHT // 2
+        self.needs_home_spawn = x is None and y is None  # 標記是否需要在玩家之家生成
 
         # 玩家尺寸
         self.width = PLAYER_WIDTH
@@ -44,6 +45,8 @@ class Player:
 
         # 移動速度
         self.speed = PLAYER_SPEED
+        self.run_speed = PLAYER_RUN_SPEED
+        self.is_running = False  # 是否正在奔跑
 
         # 當前移動方向（單位向量）
         self.direction_x = 0
@@ -52,14 +55,22 @@ class Player:
         # 面朝方向（用於動畫和互動）
         self.facing_direction = "down"  # "up", "down", "left", "right"
 
+        # 碰撞檢測相關
+        self.terrain_system = None  # 地形系統引用，用於碰撞檢測
+
         ######################生命值系統######################
-        # 生命值
-        self.max_health = PLAYER_MAX_HEALTH
-        self.health = PLAYER_INITIAL_HEALTH
+        # 生命值（根據新需求修改）
+        self.max_health = PLAYER_MAX_HEALTH  # 最高血量 1000
+        self.health = PLAYER_INITIAL_HEALTH  # 預設血量 300
         self.is_alive = True
         self.is_injured = False  # 玩家是否處於受傷狀態
         self.last_damage_time = 0
         self.invulnerable_time = 2.0  # 受傷後無敵時間 (秒)
+
+        # 血量管理系統
+        self.low_health_active = False  # 是否正在低血量狀態
+        self.last_health_recovery_time = 0  # 上次自動回復時間
+        self.heartbeat_sound_playing = False  # 心跳聲是否正在播放
 
         # 重生系統
         self.spawn_position = None
@@ -78,14 +89,32 @@ class Player:
         # 金錢
         self.money = INITIAL_MONEY
 
-        # 物品欄系統（取代原背包系統）
-        self.item_slots = [
-            None
-        ] * ITEM_BAR_SLOTS  # 10格物品欄，每格存放 {"name": str, "count": int}
-        self.selected_slot = 0  # 當前選中的格子
+        # 魚餌系統
+        self.current_bait = "普通魚餌"  # 當前選用的魚餌
+        self.bait_inventory = {
+            "普通魚餌": -1,  # -1 表示無限
+            "高級魚餌": 0,
+            "頂級魚餌": 0
+        }
 
-        # 添加一些初始物品供測試
-        self._add_initial_items()
+        # 物品欄系統已刪除 - 根據需求移除所有物品撿取和掉落功能
+        # self.item_slots = [None] * ITEM_BAR_SLOTS  # 已刪除
+        # self.selected_slot = 0  # 已刪除
+
+        ######################裝備系統######################
+        # 裝備欄（5格）
+        self.equipment_slots = {
+            1: {"name": "槍", "equipped": False},
+            2: {"name": "釣竿", "equipped": False},
+            3: {"name": "小刀", "equipped": False},
+            4: {"name": "車鑰匙", "equipped": False},
+            5: {"name": "手電筒", "equipped": False},
+        }
+        self.current_equipment = None  # 當前裝備的物品
+        self.equipment_wheel_visible = False  # 裝備圓盤是否顯示
+
+        # 添加一些初始物品供測試 - 已移除物品系統
+        # self._add_initial_items()  # 已刪除
 
         # 經驗值和等級（預留功能）
         self.experience = 0
@@ -144,6 +173,9 @@ class Player:
         if self.status_effects:  # 只有在有狀態效果時才更新
             self._update_status_effects(dt)
 
+        # 檢查和處理低血量狀態
+        self._update_health_system(dt)
+
         # 檢查死亡狀態（最低優先級）
         if self.health <= 0 and self.is_alive:
             self._handle_death()
@@ -169,6 +201,45 @@ class Player:
         # 移除過期的狀態效果
         for effect_name in expired_effects:
             self._remove_status_effect(effect_name)
+
+    def _update_health_system(self, dt):
+        """
+        更新血量管理系統\n
+        \n
+        處理低血量時的心跳聲和自動回復\n
+        \n
+        參數:\n
+        dt (float): 時間間隔\n
+        """
+        current_time = pygame.time.get_ticks() / 1000.0
+        
+        # 檢查是否血量低於閾值
+        if self.health < HEALTH_LOW_THRESHOLD:
+            if not self.low_health_active:
+                print("🫀 血量過低，開始播放心跳聲並自動回復")
+                self.low_health_active = True
+                self.heartbeat_sound_playing = True
+                # TODO: 實際播放心跳聲音檔案
+            
+            # 自動回復血量
+            if current_time - self.last_health_recovery_time >= 1.0:  # 每秒回復一次
+                old_health = self.health
+                self.health = min(HEALTH_LOW_THRESHOLD, self.health + HEALTH_AUTO_RECOVERY_RATE)
+                self.last_health_recovery_time = current_time
+                
+                if self.health > old_health:
+                    print(f"💚 自動回復血量 +{self.health - old_health}，當前血量: {self.health}")
+                
+                # 如果回復到閾值以上，停止心跳聲
+                if self.health >= HEALTH_LOW_THRESHOLD:
+                    self.low_health_active = False
+                    self.heartbeat_sound_playing = False
+                    print("💚 血量已回復到安全水平，停止心跳聲")
+        else:
+            # 血量正常，確保停止心跳聲
+            if self.low_health_active:
+                self.low_health_active = False
+                self.heartbeat_sound_playing = False
 
     def _remove_status_effect(self, effect_name):
         """
@@ -264,13 +335,24 @@ class Player:
         """
         self.spawn_position = position
 
+    def set_terrain_system(self, terrain_system):
+        """
+        設定地形系統引用，用於碰撞檢測\n
+        \n
+        參數:\n
+        terrain_system (TerrainBasedSystem): 地形系統實例\n
+        """
+        self.terrain_system = terrain_system
+
     def _update_movement(self, dt):
         """
-        更新角色移動邏輯 - 已優化效能\n
+        更新角色移動邏輯 - 已優化效能，支援奔跑功能和碰撞檢測\n
         \n
         根據當前方向和速度計算新位置\n
         使用快速的移動計算避免不必要的正規化\n
         優化常見移動情況的計算速度\n
+        支援 Shift 鍵奔跑功能\n
+        包含樹木和水域碰撞檢測\n
         \n
         參數:\n
         dt (float): 時間間隔，用於幀率無關的移動計算\n
@@ -278,25 +360,74 @@ class Player:
         # 如果沒有移動方向，就不需要移動
         if self.direction_x == 0 and self.direction_y == 0:
             return
+        
+        # 調試輸出：檢查移動參數（簡化版）
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+        
+        # 根據是否在載具中或奔跑狀態調整速度
+        if self.in_vehicle:
+            current_speed = VEHICLE_SPEED
+        elif self.is_running:
+            current_speed = self.run_speed  # 奔跑速度
+        else:
+            current_speed = self.speed  # 正常行走速度
+        
+        # 每180幀（約3秒）輸出一次調試信息，只在有移動時
+        if self._debug_counter % 180 == 0 and (self.direction_x != 0 or self.direction_y != 0):
+            print(f"玩家移動調試 - 方向: ({self.direction_x}, {self.direction_y}), 位置: ({self.x:.1f}, {self.y:.1f})")
+            print(f"玩家當前速度: {current_speed}, 奔跑狀態: {self.is_running}")
 
-        # 根據是否在載具中調整速度
-        current_speed = VEHICLE_SPEED if self.in_vehicle else self.speed
-
-        # 使用優化的移動計算 - 避免不必要的平方根計算
-        # 針對常見的8方向移動進行快速計算
+        # 使用 dt 進行幀率無關的移動計算
+        # current_speed 是像素/秒，dt 是秒，所以 move = speed * dt
         if self.direction_x == 0 or self.direction_y == 0:
             # 單軸移動（上下左右）- 最快的情況
-            move_x = self.direction_x * current_speed * dt * 60
-            move_y = self.direction_y * current_speed * dt * 60
+            move_x = self.direction_x * current_speed * dt
+            move_y = self.direction_y * current_speed * dt
         else:
             # 斜向移動 - 使用預計算的係數避免平方根運算
             diagonal_speed = current_speed * 0.7071067811865476  # 1/√2
-            move_x = self.direction_x * diagonal_speed * dt * 60
-            move_y = self.direction_y * diagonal_speed * dt * 60
+            move_x = self.direction_x * diagonal_speed * dt
+            move_y = self.direction_y * diagonal_speed * dt
 
-        # 計算新位置（使用整數運算提升效能）
-        self.x += move_x
-        self.y += move_y
+        # 計算新位置
+        new_x = self.x + move_x
+        new_y = self.y + move_y
+
+        # 碰撞檢測 - 檢查是否可以移動到新位置
+        if self.terrain_system:
+            # 分別檢查 X 和 Y 方向的移動，允許滑牆效果
+            can_move_x = self.terrain_system.can_move_to_position(new_x, self.y, self.rect)
+            can_move_y = self.terrain_system.can_move_to_position(self.x, new_y, self.rect)
+            
+            # 調試：碰撞檢測結果（簡化版）
+            if self._debug_counter % 180 == 0:
+                print(f"碰撞檢測 - 新位置: ({new_x:.1f}, {new_y:.1f}), 可移動X: {can_move_x}, 可移動Y: {can_move_y}")
+            
+            # 只有在不會發生碰撞時才移動
+            old_x, old_y = self.x, self.y
+            if can_move_x:
+                self.x = new_x
+            if can_move_y:
+                self.y = new_y
+                
+            # 調試：實際移動結果（簡化版）
+            if self._debug_counter % 180 == 0:
+                moved_x = self.x - old_x
+                moved_y = self.y - old_y
+                if moved_x != 0 or moved_y != 0:  # 只在實際有移動時輸出
+                    print(f"實際移動 - 移動量: ({moved_x:.3f}, {moved_y:.3f})")
+        else:
+            # 沒有地形系統時直接移動（後備方案）
+            self.x = new_x
+            self.y = new_y
+
+        # 更新最後安全位置（只有當玩家不在水中或建築物內時）
+        if self.terrain_system:
+            if self.terrain_system.can_move_to_position(self.x, self.y, self.rect):
+                self.last_safe_position = (self.x, self.y)
 
     def _update_facing_direction(self):
         """
@@ -346,6 +477,27 @@ class Player:
         self.direction_x = 0
         self.direction_y = 0
 
+    def set_running(self, is_running):
+        """
+        設定奔跑狀態\n
+        \n
+        參數:\n
+        is_running (bool): True 表示開始奔跑，False 表示停止奔跑\n
+        """
+        self.is_running = is_running
+
+    def start_running(self):
+        """
+        開始奔跑\n
+        """
+        self.is_running = True
+
+    def stop_running(self):
+        """
+        停止奔跑\n
+        """
+        self.is_running = False
+
     def set_position(self, x, y):
         """
         直接設定角色位置\n
@@ -393,131 +545,154 @@ class Player:
         relative_y = int(self.y - HOME_WORLD_Y)
         return (relative_x, relative_y)
 
-    ######################物品欄系統方法######################
+    ######################物品欄系統方法（已刪除）######################
+    # 根據需求，刪除所有物品相關功能
+    # 不會有任何掉落物品，不會有任何撿取物品的行為
+    
     def add_item(self, item_name, quantity=1):
-        """
-        將物品加入物品欄\n
-        \n
-        檢查是否有空格子或相同物品的格子\n
-        如果有相同物品則增加數量，否則佔用新格子\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        quantity (int): 要添加的數量，預設為 1\n
-        \n
-        回傳:\n
-        bool: True 表示成功添加，False 表示物品欄已滿\n
-        """
-        # 先檢查是否有相同物品的格子
-        for i, slot in enumerate(self.item_slots):
-            if slot and slot["name"] == item_name:
-                slot["count"] += quantity
-                print(f"添加物品到格子 {i+1}: {item_name} x{quantity}")
-                return True
-
-        # 找空格子
-        for i, slot in enumerate(self.item_slots):
-            if slot is None:
-                self.item_slots[i] = {"name": item_name, "count": quantity}
-                print(f"新物品放入格子 {i+1}: {item_name} x{quantity}")
-                return True
-
-        print(f"物品欄已滿，無法添加 {item_name}")
+        """物品系統已刪除 - 此方法不再執行任何功能"""
+        print("物品系統已刪除，無法添加物品")
         return False
 
     def remove_item(self, item_name, quantity=1):
-        """
-        從物品欄移除物品\n
-        \n
-        檢查物品數量並移除指定數量\n
-        如果數量歸零則清空格子\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        quantity (int): 要移除的數量，預設為 1\n
-        \n
-        回傳:\n
-        bool: True 表示成功移除，False 表示物品不足\n
-        """
-        for i, slot in enumerate(self.item_slots):
-            if slot and slot["name"] == item_name:
-                if slot["count"] >= quantity:
-                    slot["count"] -= quantity
-                    if slot["count"] == 0:
-                        self.item_slots[i] = None
-                        print(f"格子 {i+1} 已清空")
-                    else:
-                        print(f"從格子 {i+1} 移除 {item_name} x{quantity}")
-                    return True
-                else:
-                    print(
-                        f"{item_name} 數量不足，現有 {slot['count']}，需要 {quantity}"
-                    )
-                    return False
-
-        print(f"物品欄中沒有 {item_name}")
+        """物品系統已刪除 - 此方法不再執行任何功能"""
+        print("物品系統已刪除，無法移除物品")
         return False
 
     def has_item(self, item_name, quantity=1):
-        """
-        檢查物品欄是否有指定物品\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        quantity (int): 需要的數量，預設為 1\n
-        \n
-        回傳:\n
-        bool: True 表示有足夠物品，False 表示物品不足\n
-        """
-        total_count = 0
-        for slot in self.item_slots:
-            if slot and slot["name"] == item_name:
-                total_count += slot["count"]
-        return total_count >= quantity
+        """物品系統已刪除 - 此方法永遠返回 False"""
+        return False
 
     def get_item_count(self, item_name):
-        """
-        獲取物品欄中指定物品的總數量\n
-        \n
-        參數:\n
-        item_name (str): 物品名稱\n
-        \n
-        回傳:\n
-        int: 物品數量，如果沒有則回傳 0\n
-        """
-        total_count = 0
-        for slot in self.item_slots:
-            if slot and slot["name"] == item_name:
-                total_count += slot["count"]
-        return total_count
+        """物品系統已刪除 - 此方法永遠返回 0"""
+        return 0
 
     def get_item_slots(self):
-        """
-        獲取物品欄狀態\n
-        \n
-        回傳:\n
-        list: 包含所有格子狀態的列表\n
-        """
-        return self.item_slots.copy()
+        """物品系統已刪除 - 此方法返回空列表"""
+        return []
 
     def select_slot(self, slot_index):
-        """
-        選擇物品欄格子\n
-        \n
-        參數:\n
-        slot_index (int): 格子索引（0-9）\n
-        """
-        if 0 <= slot_index < ITEM_BAR_SLOTS:
-            self.selected_slot = slot_index
+        """物品系統已刪除 - 此方法不再執行任何功能"""
+        pass
 
     def get_selected_item(self):
+        """物品系統已刪除 - 此方法永遠返回 None"""
+        return None
+
+    ######################魚餌系統方法######################
+    def get_current_bait(self):
         """
-        獲取當前選中格子的物品\n
+        獲取當前使用的魚餌\n
         \n
         回傳:\n
-        dict: 物品資訊 {"name": str, "count": int}，如果格子為空則回傳 None\n
+        str: 當前魚餌名稱\n
         """
-        return self.item_slots[self.selected_slot]
+        return self.current_bait
+
+    def set_current_bait(self, bait_name):
+        """
+        設定當前使用的魚餌\n
+        \n
+        參數:\n
+        bait_name (str): 魚餌名稱\n
+        \n
+        回傳:\n
+        bool: 是否成功設定\n
+        """
+        if bait_name in self.bait_inventory:
+            if self.bait_inventory[bait_name] > 0 or self.bait_inventory[bait_name] == -1:
+                self.current_bait = bait_name
+                print(f"🎣 切換到 {bait_name}")
+                return True
+            else:
+                print(f"❌ {bait_name} 數量不足")
+                return False
+        return False
+
+    def add_bait(self, bait_name, quantity):
+        """
+        添加魚餌\n
+        \n
+        參數:\n
+        bait_name (str): 魚餌名稱\n
+        quantity (int): 數量\n
+        """
+        if bait_name in self.bait_inventory:
+            if self.bait_inventory[bait_name] == -1:
+                return  # 普通魚餌無限，不需要添加
+            self.bait_inventory[bait_name] += quantity
+            print(f"獲得 {bait_name} x{quantity}")
+
+    def use_bait(self):
+        """
+        使用一個魚餌\n
+        \n
+        回傳:\n
+        bool: 是否成功使用\n
+        """
+        if self.current_bait in self.bait_inventory:
+            if self.bait_inventory[self.current_bait] == -1:
+                return True  # 普通魚餌無限使用
+            elif self.bait_inventory[self.current_bait] > 0:
+                self.bait_inventory[self.current_bait] -= 1
+                print(f"使用 {self.current_bait}，剩餘: {self.bait_inventory[self.current_bait]}")
+                return True
+        return False
+
+    def get_bait_multiplier(self):
+        """
+        獲取當前魚餌的效果倍數\n
+        \n
+        回傳:\n
+        float: 魚餌效果倍數\n
+        """
+        if self.current_bait in BAIT_TYPES:
+            return BAIT_TYPES[self.current_bait]["multiplier"]
+        return 1.0
+
+    ######################血量藥水方法######################
+    def use_health_potion(self, potion_type):
+        """
+        使用血量藥水\n
+        \n
+        參數:\n
+        potion_type (str): 藥水類型\n
+        \n
+        回傳:\n
+        bool: 是否成功使用\n
+        """
+        if potion_type in HEALTH_POTIONS:
+            heal_amount = HEALTH_POTIONS[potion_type]["heal_amount"]
+            old_health = self.health
+            self.health = min(self.max_health, self.health + heal_amount)
+            actual_heal = self.health - old_health
+            
+            if actual_heal > 0:
+                print(f"🧪 使用 {potion_type}，回復 {actual_heal} 血量！當前血量: {self.health}")
+                return True
+            else:
+                print("血量已滿，無需使用藥水")
+                return False
+        return False
+
+    def release_fish_for_health(self):
+        """
+        放生魚類獲得血量加成\n
+        \n
+        回傳:\n
+        int: 實際回復的血量\n
+        """
+        old_health = self.health
+        new_health = min(self.max_health, int(self.health * FISH_RELEASE_HEALTH_MULTIPLIER))
+        self.health = new_health
+        actual_heal = new_health - old_health
+        
+        if actual_heal > 0:
+            print(f"🐟 放生魚類，血量增加 {actual_heal}！當前血量: {self.health}")
+        else:
+            print("🐟 放生魚類，但血量已達上限")
+        
+        return actual_heal
 
     ######################金錢系統方法######################
     def add_money(self, amount):
@@ -563,6 +738,108 @@ class Player:
         """
         return self.money
 
+    def spawn_at_player_home(self, player_home):
+        """
+        將玩家生成在玩家之家門口（安全位置）\n
+        \n
+        參數:\n
+        player_home (ResidentialHouse): 玩家之家建築物件\n
+        """
+        if self.needs_home_spawn and player_home:
+            # 將玩家放在建築物下方（門口位置），而不是建築物內部
+            home_x = player_home.x + player_home.width // 2  # 建築物中央 X 位置
+            home_y = player_home.y + player_home.height + 20  # 建築物下方 20 像素（門口位置）
+            self.set_position(home_x, home_y)
+            
+            # 設定重生點為離家最近的草原
+            self._set_respawn_point_near_home(player_home)
+            
+            self.needs_home_spawn = False
+            print(f"玩家已生成在玩家之家門口: ({home_x}, {home_y})")
+            
+            # 驗證位置是否安全（可移動）
+            if self.terrain_system:
+                can_move = self.terrain_system.can_move_to_position(home_x, home_y, self.rect)
+                if not can_move:
+                    # 如果門口位置也不安全，嘗試更遠的位置
+                    alternative_y = player_home.y + player_home.height + 50
+                    self.set_position(home_x, alternative_y)
+                    print(f"門口位置不安全，移動到更遠位置: ({home_x}, {alternative_y})")
+                else:
+                    print("玩家位置驗證通過，可以正常移動")
+
+    def _set_respawn_point_near_home(self, player_home):
+        """
+        設定離家最近的草原為重生點\n
+        \n
+        參數:\n
+        player_home (ResidentialHouse): 玩家之家建築物件\n
+        """
+        if not self.terrain_system:
+            # 沒有地形系統時使用預設重生點
+            self.spawn_position = (player_home.x, player_home.y + player_home.height + 50)
+            return
+        
+        home_center_x = player_home.x + player_home.width // 2
+        home_center_y = player_home.y + player_home.height // 2
+        
+        # 在家周圍搜索最近的草原（地形編碼0）
+        best_distance = float('inf')
+        best_position = None
+        search_radius = 200  # 搜索半徑
+        
+        for radius in range(50, search_radius, 20):
+            for angle_step in range(0, 360, 30):
+                angle = angle_step * 3.14159 / 180
+                test_x = home_center_x + radius * math.cos(angle)
+                test_y = home_center_y + radius * math.sin(angle)
+                
+                # 檢查是否為草原且可移動
+                if self._is_grassland_position(test_x, test_y):
+                    distance = ((test_x - home_center_x) ** 2 + (test_y - home_center_y) ** 2) ** 0.5
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_position = (test_x, test_y)
+        
+        if best_position:
+            self.spawn_position = best_position
+            print(f"🏠 重生點設定為離家最近的草原: ({best_position[0]:.1f}, {best_position[1]:.1f})")
+        else:
+            # 找不到草原時使用預設位置
+            self.spawn_position = (home_center_x, home_center_y + 100)
+            print(f"⚠️ 找不到草原，使用預設重生點: ({self.spawn_position[0]:.1f}, {self.spawn_position[1]:.1f})")
+
+    def _is_grassland_position(self, x, y):
+        """
+        檢查位置是否為草原\n
+        \n
+        參數:\n
+        x (float): X座標\n
+        y (float): Y座標\n
+        \n
+        回傳:\n
+        bool: 是否為草原且可移動\n
+        """
+        if not self.terrain_system:
+            return True
+        
+        # 檢查地形類型是否為草原（編碼0）
+        terrain_type = self.terrain_system.get_terrain_at_position(x, y)
+        if terrain_type != 0:  # 不是草原
+            return False
+        
+        # 檢查是否可移動
+        dummy_rect = pygame.Rect(x-4, y-4, 8, 8)
+        return self.terrain_system.can_move_to_position(x, y, dummy_rect)
+
+    def get_health_percentage(self):
+        """
+        獲取生命值百分比\n
+        \n
+        回傳:\n
+        float: 生命值百分比 (0.0 - 1.0)\n
+        """
+        return self.health / self.max_health if self.max_health > 0 else 0
     ######################載具系統方法######################
     def enter_vehicle(self):
         """
@@ -615,7 +892,7 @@ class Player:
         return self.current_tool
 
     ######################繪製方法######################
-    def draw(self, screen):
+    def draw(self, screen, camera_x=0, camera_y=0):
         """
         繪製玩家角色\n
         \n
@@ -624,6 +901,8 @@ class Player:
         \n
         參數:\n
         screen (pygame.Surface): 要繪製到的螢幕表面\n
+        camera_x (int): 攝影機 X 偏移\n
+        camera_y (int): 攝影機 Y 偏移\n
         """
         if not self.is_alive:
             return
@@ -632,17 +911,22 @@ class Player:
         if self.is_driving:
             return
 
+        # 計算螢幕座標
+        screen_x = self.rect.x - camera_x
+        screen_y = self.rect.y - camera_y
+        screen_rect = pygame.Rect(screen_x, screen_y, self.rect.width, self.rect.height)
+
         # 繪製角色主體（使用當前服裝顏色）
-        pygame.draw.rect(screen, self.color, self.rect)
+        pygame.draw.rect(screen, self.color, screen_rect)
 
         # 根據面朝方向繪製簡單的方向指示
-        self._draw_direction_indicator(screen)
+        self._draw_direction_indicator(screen, camera_x, camera_y)
 
         # 繪製生命值條 (如果受傷)
         if self.is_injured:
-            self._draw_health_bar(screen)
+            self._draw_health_bar(screen, camera_x, camera_y)
 
-    def _draw_direction_indicator(self, screen):
+    def _draw_direction_indicator(self, screen, camera_x=0, camera_y=0):
         """
         繪製方向指示器\n
         \n
@@ -651,13 +935,15 @@ class Player:
         \n
         參數:\n
         screen (pygame.Surface): 要繪製到的螢幕表面\n
+        camera_x (int): 攝影機 X 偏移\n
+        camera_y (int): 攝影機 Y 偏移\n
         """
         indicator_color = (255, 255, 255)  # 白色指示三角形
         size = 2  # 三角形大小（調整為配合縮小的玩家尺寸）
 
-        # 計算角色中心位置
-        center_x = self.rect.centerx
-        center_y = self.rect.centery
+        # 計算角色螢幕中心位置
+        center_x = self.rect.centerx - camera_x
+        center_y = self.rect.centery - camera_y
 
         # 根據面朝方向計算三角形的三個頂點
         if self.facing_direction == "up":
@@ -699,17 +985,19 @@ class Player:
         # 繪製方向指示三角形
         pygame.draw.polygon(screen, indicator_color, points)
 
-    def _draw_health_bar(self, screen):
+    def _draw_health_bar(self, screen, camera_x=0, camera_y=0):
         """
         繪製生命值條\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        camera_x (int): 攝影機 X 偏移\n
+        camera_y (int): 攝影機 Y 偏移\n
         """
         bar_width = self.rect.width
         bar_height = 4
-        bar_x = self.rect.x
-        bar_y = self.rect.y - 8
+        bar_x = self.rect.x - camera_x
+        bar_y = self.rect.y - camera_y - 8
 
         # 背景條 (紅色)
         background_rect = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
@@ -723,73 +1011,13 @@ class Player:
 
     def draw_item_bar(self, screen):
         """
-        繪製畫面底下的物品欄\n
+        物品欄已刪除 - 此方法不再繪製任何內容\n
         \n
         參數:\n
         screen (pygame.Surface): 要繪製到的螢幕表面\n
         """
-        # 計算物品欄位置（畫面底下中央）
-        bar_width = (
-            ITEM_BAR_SLOTS * (ITEM_BAR_SLOT_SIZE + ITEM_BAR_PADDING) - ITEM_BAR_PADDING
-        )
-        bar_x = (SCREEN_WIDTH - bar_width) // 2
-        bar_y = SCREEN_HEIGHT - ITEM_BAR_HEIGHT - 10
-
-        # 繪製物品欄背景
-        background_rect = pygame.Rect(
-            bar_x - 10, bar_y - 10, bar_width + 20, ITEM_BAR_HEIGHT + 20
-        )
-        pygame.draw.rect(screen, (50, 50, 50, 200), background_rect)
-        pygame.draw.rect(screen, (200, 200, 200), background_rect, 2)
-
-        # 繪製每個格子
-        for i in range(ITEM_BAR_SLOTS):
-            slot_x = bar_x + i * (ITEM_BAR_SLOT_SIZE + ITEM_BAR_PADDING)
-            slot_y = bar_y
-            slot_rect = pygame.Rect(
-                slot_x, slot_y, ITEM_BAR_SLOT_SIZE, ITEM_BAR_SLOT_SIZE
-            )
-
-            # 格子背景顏色
-            if i == self.selected_slot:
-                # 選中的格子用亮色
-                pygame.draw.rect(screen, (100, 150, 100), slot_rect)
-            else:
-                # 普通格子用暗色
-                pygame.draw.rect(screen, (80, 80, 80), slot_rect)
-
-            # 格子邊框
-            pygame.draw.rect(screen, (200, 200, 200), slot_rect, 2)
-
-            # 繪製物品（如果有的話）
-            slot = self.item_slots[i]
-            if slot:
-                # 物品顏色（簡單的顏色映射）
-                item_color = self._get_item_color(slot["name"])
-                item_rect = pygame.Rect(
-                    slot_x + 5,
-                    slot_y + 5,
-                    ITEM_BAR_SLOT_SIZE - 10,
-                    ITEM_BAR_SLOT_SIZE - 10,
-                )
-                pygame.draw.rect(screen, item_color, item_rect)
-
-                # 繪製物品數量
-                if slot["count"] > 1:
-                    font = pygame.font.Font(None, 20)
-                    count_text = font.render(str(slot["count"]), True, (255, 255, 255))
-                    screen.blit(
-                        count_text,
-                        (
-                            slot_x + ITEM_BAR_SLOT_SIZE - 15,
-                            slot_y + ITEM_BAR_SLOT_SIZE - 15,
-                        ),
-                    )
-
-            # 繪製格子編號
-            font = pygame.font.Font(None, 16)
-            number_text = font.render(str(i + 1), True, (255, 255, 255))
-            screen.blit(number_text, (slot_x + 2, slot_y + 2))
+        # 物品欄功能已完全移除，不再繪製
+        pass
 
     def _get_item_color(self, item_name):
         """
@@ -839,8 +1067,9 @@ class Player:
             "health": self.health,
             "max_health": self.max_health,
             "money": self.money,
-            "item_slots": self.item_slots.copy(),
-            "selected_slot": self.selected_slot,
+            # 物品欄相關已刪除
+            # "item_slots": self.item_slots.copy(),
+            # "selected_slot": self.selected_slot,
             "experience": self.experience,
             "level": self.level,
             "current_outfit": self.current_outfit,
@@ -875,11 +1104,11 @@ class Player:
             if "money" in save_data:
                 self.money = save_data["money"]
 
-            # 載入物品欄
-            if "item_slots" in save_data:
-                self.item_slots = save_data["item_slots"].copy()
-            if "selected_slot" in save_data:
-                self.selected_slot = save_data["selected_slot"]
+            # 物品欄相關已刪除
+            # if "item_slots" in save_data:
+            #     self.item_slots = save_data["item_slots"].copy()
+            # if "selected_slot" in save_data:
+            #     self.selected_slot = save_data["selected_slot"]
 
             # 載入經驗值和等級
             if "experience" in save_data:
@@ -913,11 +1142,80 @@ class Player:
 
     def _add_initial_items(self):
         """
-        添加初始物品供測試\n
+        添加初始物品供測試 - 物品系統已刪除\n
         """
-        # 添加一些測試物品
-        self.add_item("小魚", 3)
-        self.add_item("鯉魚", 1)
-        self.add_item("兔肉", 2)
-        self.add_item("工具", 1)
-        print("已添加初始測試物品")
+        # 物品系統已完全移除，不再添加任何物品
+        print("物品系統已刪除，不再添加初始物品")
+
+    ######################裝備系統方法######################
+    def toggle_equipment_wheel(self):
+        """
+        切換裝備圓盤顯示狀態\n
+        """
+        self.equipment_wheel_visible = not self.equipment_wheel_visible
+        print(f"裝備圓盤 {'顯示' if self.equipment_wheel_visible else '隱藏'}")
+
+    def equip_item(self, slot_number):
+        """
+        裝備指定槽位的物品\n
+        \n
+        參數:\n
+        slot_number (int): 裝備槽位編號 (1-5)\n
+        """
+        if slot_number not in self.equipment_slots:
+            return False
+        
+        # 先卸下當前裝備
+        if self.current_equipment:
+            self.equipment_slots[self.current_equipment]["equipped"] = False
+        
+        # 裝備新物品
+        equipment = self.equipment_slots[slot_number]
+        equipment["equipped"] = True
+        self.current_equipment = slot_number
+        
+        print(f"🔧 裝備了 {equipment['name']}")
+        
+        # 隱藏裝備圓盤
+        self.equipment_wheel_visible = False
+        
+        return True
+
+    def get_current_equipment(self):
+        """
+        獲取當前裝備的物品\n
+        \n
+        回傳:\n
+        dict: 當前裝備資訊，如果沒有裝備則回傳 None\n
+        """
+        if self.current_equipment is None:
+            return None
+        return self.equipment_slots[self.current_equipment]
+
+    def has_equipment(self, equipment_name):
+        """
+        檢查是否擁有指定裝備\n
+        \n
+        參數:\n
+        equipment_name (str): 裝備名稱\n
+        \n
+        回傳:\n
+        bool: 是否擁有該裝備\n
+        """
+        for slot_data in self.equipment_slots.values():
+            if slot_data["name"] == equipment_name:
+                return True
+        return False
+
+    def is_equipment_equipped(self, equipment_name):
+        """
+        檢查指定裝備是否已裝備\n
+        \n
+        參數:\n
+        equipment_name (str): 裝備名稱\n
+        \n
+        回傳:\n
+        bool: 是否已裝備\n
+        """
+        current = self.get_current_equipment()
+        return current is not None and current["name"] == equipment_name

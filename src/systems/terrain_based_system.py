@@ -4,7 +4,7 @@ import random
 import math
 from config.settings import *
 from src.utils.terrain_map_loader import TerrainMapLoader
-from src.systems.building_system import Building, GunShop, Hospital
+from src.systems.building_system import Building, GunShop, Hospital, ResidentialHouse
 from src.systems.vehicle_system import Vehicle
 
 
@@ -132,53 +132,100 @@ class TerrainBasedSystem:
     def _setup_residential_areas(self):
         """
         設置住宅區 - 地形編碼5\n
-        每格放置6個住宅，每棟至少為玩家尺寸的5倍\n
+        新需求：住宅區每格放4個住宅單位，將住宅區格子填滿\n
         """
         print("設置住宅區...")
         
-        # 計算住宅尺寸 (玩家尺寸的5倍)
-        player_size = max(self.player.rect.width, self.player.rect.height)
-        house_size = player_size * 5
-        
-        residential_count = 0
-        
+        # 找到住宅區格子
+        residential_tiles = []
         for y in range(self.map_height):
             for x in range(self.map_width):
                 if self.map_data[y][x] == 5:  # 住宅區
-                    # 計算格子的世界座標
-                    tile_world_x = x * self.tile_size
-                    tile_world_y = y * self.tile_size
-                    
-                    # 在格子內放置6個住宅 (2x3 排列)
-                    houses_per_row = 2
-                    houses_per_col = 3
-                    house_spacing_x = self.tile_size // houses_per_row
-                    house_spacing_y = self.tile_size // houses_per_col
-                    
-                    for house_y in range(houses_per_col):
-                        for house_x in range(houses_per_row):
-                            # 計算住宅位置 (在格子內均勻分佈)
-                            house_pos_x = tile_world_x + house_x * house_spacing_x + house_spacing_x // 4
-                            house_pos_y = tile_world_y + house_y * house_spacing_y + house_spacing_y // 4
-                            
-                            # 確保住宅不超出格子邊界
-                            actual_house_size = min(house_size, house_spacing_x - 4, house_spacing_y - 4)
-                            
-                            # 創建住宅建築
-                            house = Building(
-                                "residential", 
-                                (house_pos_x, house_pos_y), 
-                                (actual_house_size, actual_house_size)
-                            )
-                            house.name = f"住宅{residential_count + 1}"
-                            house.color = (255, 255, 224)  # 淺黃色
-                            house.terrain_grid = (x, y)  # 記錄所屬地形格子
-                            
-                            self.buildings.append(house)
-                            self.residential_buildings.append(house)
-                            residential_count += 1
+                    residential_tiles.append((x, y))
         
-        print(f"住宅區設置完成，共創建 {residential_count} 棟住宅")
+        if not residential_tiles:
+            print("警告：找不到住宅區格子")
+            return
+        
+        print(f"找到 {len(residential_tiles)} 個住宅區格子")
+        
+        # 每個住宅區格子放4個住宅單位
+        houses_per_grid = HOUSES_PER_RESIDENTIAL_GRID
+        total_houses_created = 0
+        
+        # 住宅尺寸設定
+        base_house_size = 30  # 基礎住宅大小
+        house_spacing = 5     # 住宅間的間隙
+        
+        for tile_x, tile_y in residential_tiles:
+            # 計算格子的世界座標
+            tile_world_x = tile_x * self.tile_size
+            tile_world_y = tile_y * self.tile_size
+            
+            # 在每個格子內放置4個住宅（2x2排列）
+            houses_in_grid = 0
+            for row in range(2):
+                for col in range(2):
+                    if houses_in_grid >= houses_per_grid:
+                        break
+                    
+                    # 計算住宅在格子內的位置（2x2排列）
+                    house_size_in_grid = (self.tile_size - house_spacing * 3) // 2  # 減去間隙後的可用空間
+                    house_size = min(house_size_in_grid, base_house_size)  # 不超過基礎大小
+                    
+                    house_pos_x = tile_world_x + house_spacing + col * (house_size + house_spacing)
+                    house_pos_y = tile_world_y + house_spacing + row * (house_size + house_spacing)
+                    
+                    # 碰撞檢測：確保新住宅不與現有建築重疊
+                    new_house_rect = pygame.Rect(house_pos_x, house_pos_y, house_size, house_size)
+                    collision_detected = False
+                    
+                    for existing_building in self.buildings:
+                        existing_rect = pygame.Rect(existing_building.x, existing_building.y, 
+                                                  existing_building.width, existing_building.height)
+                        if new_house_rect.colliderect(existing_rect):
+                            collision_detected = True
+                            break
+                    
+                    # 如果沒有碰撞，創建住宅
+                    if not collision_detected:
+                        # 創建住宅建築 - 使用 ResidentialHouse 類別
+                        house = ResidentialHouse(
+                            "house", 
+                            (house_pos_x, house_pos_y), 
+                            (house_size, house_size)  # 正方形
+                        )
+                        
+                        # 第一個住宅設為玩家之家
+                        if total_houses_created == 0:
+                            house.is_player_home = True
+                            house.name = "玩家之家"
+                            house.color = (255, 215, 0)  # 金色標記玩家之家
+                        else:
+                            house.name = f"住宅{total_houses_created + 1}"
+                            house.color = (160, 82, 45)  # 住宅標準顏色
+                        
+                        house.terrain_grid = (tile_x, tile_y)  # 記錄所屬地形格子
+                        
+                        self.buildings.append(house)
+                        self.residential_buildings.append(house)
+                        total_houses_created += 1
+                        houses_in_grid += 1
+                        
+                        print(f"在格子({tile_x},{tile_y})創建住宅 {house.name} 位置({house_pos_x},{house_pos_y})")
+                    else:
+                        print(f"住宅位置({house_pos_x},{house_pos_y})發生碰撞，跳過")
+                
+                if houses_in_grid >= houses_per_grid:
+                    break
+        
+        print(f"住宅區設置完成，共創建 {total_houses_created} 棟住宅")
+        print(f"玩家之家數量: {sum(1 for h in self.residential_buildings if hasattr(h, 'is_player_home') and h.is_player_home)}")
+        
+        # 為所有住宅初始化內部佈置
+        for house in self.residential_buildings:
+            if hasattr(house, 'initialize_interior'):
+                house.initialize_interior()
 
     def _setup_commercial_areas(self):
         """
@@ -337,7 +384,8 @@ class TerrainBasedSystem:
                         tree = {
                             'position': (tree_x, tree_y),
                             'size': tree_size,
-                            'color': (34, 100, 34)
+                            'color': (34, 100, 34),
+                            'collision_rect': pygame.Rect(tree_x - tree_size//2, tree_y - tree_size//2, tree_size, tree_size)  # 添加碰撞矩形
                         }
                         forest_area['trees'].append(tree)
                     
@@ -864,3 +912,145 @@ class TerrainBasedSystem:
             return self.map_data[grid_y][grid_x]
         else:
             return 0  # 超出範圍默認為草地
+
+    def check_tree_collision(self, player_rect):
+        """
+        檢查玩家與樹木的碰撞\n
+        \n
+        參數:\n
+        player_rect (pygame.Rect): 玩家的碰撞矩形\n
+        \n
+        回傳:\n
+        bool: 如果與樹木碰撞則回傳 True\n
+        """
+        for forest_area in self.forest_areas:
+            for tree in forest_area['trees']:
+                if player_rect.colliderect(tree['collision_rect']):
+                    return True
+        return False
+
+    def check_water_collision(self, world_x, world_y):
+        """
+        檢查指定位置是否為水域（不可通行）\n
+        \n
+        參數:\n
+        world_x (float): 世界座標 X\n
+        world_y (float): 世界座標 Y\n
+        \n
+        回傳:\n
+        bool: 如果是水域則回傳 True\n
+        """
+        terrain_type = self.get_terrain_at_position(world_x, world_y)
+        return terrain_type == 2  # 地形代碼2為水域
+
+    def can_move_to_position(self, world_x, world_y, entity_rect):
+        """
+        檢查實體是否可以移動到指定位置\n
+        \n
+        參數:\n
+        world_x (float): 目標世界座標 X\n
+        world_y (float): 目標世界座標 Y\n
+        entity_rect (pygame.Rect): 實體的碰撞矩形\n
+        \n
+        回傳:\n
+        bool: 如果可以移動則回傳 True\n
+        """
+        # 檢查水域碰撞
+        if self.check_water_collision(world_x, world_y):
+            return False
+        
+        # 創建目標位置的矩形
+        target_rect = pygame.Rect(world_x - entity_rect.width//2, world_y - entity_rect.height//2, 
+                                entity_rect.width, entity_rect.height)
+        
+        # 檢查樹木碰撞
+        if self.check_tree_collision(target_rect):
+            return False
+        
+        # 檢查建築物碰撞
+        if self.check_building_collision(target_rect):
+            return False
+        
+        return True
+
+    def check_building_collision(self, entity_rect):
+        """
+        檢查實體是否與建築物發生碰撞\n
+        \n
+        參數:\n
+        entity_rect (pygame.Rect): 實體的碰撞矩形\n
+        \n
+        回傳:\n
+        bool: 如果發生碰撞則回傳 True\n
+        """
+        # 檢查所有建築物
+        for building in self.buildings:
+            building_rect = pygame.Rect(building.x, building.y, building.width, building.height)
+            if entity_rect.colliderect(building_rect):
+                return True
+        
+        return False
+
+    def get_nearby_tree(self, player_position, max_distance=30):
+        """
+        獲取玩家附近的樹木\n
+        \n
+        參數:\n
+        player_position (tuple): 玩家位置 (x, y)\n
+        max_distance (float): 最大距離\n
+        \n
+        回傳:\n
+        dict: 最近的樹木資訊，如果沒有則回傳 None\n
+        """
+        px, py = player_position
+        closest_tree = None
+        closest_distance = float('inf')
+        
+        for forest_area in self.forest_areas:
+            for i, tree in enumerate(forest_area['trees']):
+                tx, ty = tree['position']
+                distance = math.sqrt((px - tx) ** 2 + (py - ty) ** 2)
+                
+                if distance <= max_distance and distance < closest_distance:
+                    closest_distance = distance
+                    closest_tree = {
+                        'tree': tree,
+                        'forest_area': forest_area,
+                        'tree_index': i,
+                        'distance': distance
+                    }
+        
+        return closest_tree
+
+    def chop_tree(self, player, tree_info):
+        """
+        砍伐樹木\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        tree_info (dict): 樹木資訊（由 get_nearby_tree 回傳）\n
+        \n
+        回傳:\n
+        dict: 砍伐結果\n
+        """
+        if tree_info is None:
+            return {'success': False, 'message': '附近沒有樹木可以砍伐'}
+        
+        # 移除樹木
+        forest_area = tree_info['forest_area']
+        tree_index = tree_info['tree_index']
+        tree = tree_info['tree']
+        
+        # 從森林區域中移除樹木
+        forest_area['trees'].pop(tree_index)
+        
+        # 給玩家獎勵
+        player.add_money(100)
+        
+        print(f"🪓 砍伐了一棵樹木，獲得 100 元！")
+        
+        return {
+            'success': True,
+            'message': '砍伐成功！獲得 100 元',
+            'money_earned': 100
+        }

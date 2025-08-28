@@ -81,7 +81,10 @@ WATER_COLOR = (0, 191, 255)
 
 ######################玩家角色設定######################
 # 玩家角色的移動速度，單位為像素/幀
-PLAYER_SPEED = 0.05 # 調整為合適的移動速度
+PLAYER_SPEED = 200.0  # 調整為合適的移動速度（每秒移動像素數）
+
+# 玩家奔跑速度（Shift 鍵加速）
+PLAYER_RUN_SPEED = 300.0  # 奔跑時的移動速度
 
 # 玩家角色的尺寸 - 寬度（縮小為原來的1/4以配合建築系統）
 PLAYER_WIDTH = 8
@@ -184,6 +187,23 @@ FISHING_BASE_SUCCESS_RATE = 0.3
 # 釣魚動作需要的時間，單位為秒
 FISHING_TIME = 3.0
 
+# 魚餌系統設定
+BAIT_TYPES = {
+    "普通魚餌": {"price": 100, "multiplier": 1.0},
+    "高級魚餌": {"price": 500, "multiplier": 1.5},
+    "頂級魚餌": {"price": 1000, "multiplier": 2.0}
+}
+
+# 魚類放生血量加成
+FISH_RELEASE_HEALTH_MULTIPLIER = 1.1
+
+# 血量藥水設定
+HEALTH_POTIONS = {
+    "小型血量藥水": {"price": 50, "heal_amount": 50},
+    "中型血量藥水": {"price": 150, "heal_amount": 150},
+    "大型血量藥水": {"price": 300, "heal_amount": 300}
+}
+
 ######################槍械系統設定######################
 # 槍械射程，單位為像素
 GUN_RANGE = 200
@@ -202,13 +222,19 @@ GUN_SHOP_COUNT = 10  # 槍械店數量
 # 醫院數量
 HOSPITAL_COUNT = 5
 
-# 玩家初始生命值
-PLAYER_MAX_HEALTH = 100
-PLAYER_INITIAL_HEALTH = 100
+# 玩家初始生命值（根據新需求）
+PLAYER_MAX_HEALTH = 1000  # 最高血量
+PLAYER_INITIAL_HEALTH = 300  # 預設血量
+
+# 血量相關設定
+HEALTH_LOW_THRESHOLD = 100  # 血量低於此值時播放心跳聲並自動回復
+HEALTH_AUTO_RECOVERY_RATE = 1  # 自動回復速度（每秒回復1點）
 
 ######################建築物數量設定######################
-# 住宅建築 (為330個NPC提供住所)
-HOUSE_COUNT = 330  # 住宅數量 - 一個NPC一間房
+# 住宅建築 (依據新需求：住宅區每格放4個住宅單位)
+HOUSES_PER_RESIDENTIAL_GRID = 4  # 每個住宅區格子放4個住宅單位
+RESIDENTIAL_GRID_COUNT = 100  # 住宅區格子數量（更新為實際數量）
+TOTAL_HOUSES = HOUSES_PER_RESIDENTIAL_GRID * RESIDENTIAL_GRID_COUNT  # 總住宅數量
 
 # 宗教建築
 CHURCH_COUNT = 5  # 教堂數量 (增加)
@@ -242,20 +268,32 @@ POWER_PLANT_COUNT = 1  # 電力場數量
 FARM_AREA_COUNT = 5  # 農田區域數量
 
 ######################NPC職業分配設定######################
-# 總NPC數量
-TOTAL_TOWN_NPCS = 330
-TOTAL_TRIBE_NPCS = 100
+# 總NPC數量（依據新需求：NPC數量 = 住宅總數 - 1）
+TOTAL_TOWN_NPCS = TOTAL_HOUSES - 1  # 玩家佔用一戶，其餘為NPC
+TOTAL_TRIBE_NPCS = 0  # 刪除部落NPC（依據需求）
 
-# 小鎮NPC職業分配
-FARMER_COUNT = 100  # 農夫
-DOCTOR_COUNT = 10  # 醫生
-NURSE_COUNT = 40  # 護士
-GUN_SHOP_STAFF_COUNT = 20  # 槍械店員工
-VENDOR_COUNT = 10  # 路邊小販
+# 小鎮NPC職業分配（重新分配以配合新的NPC數量）
+# 每個住宅最多3個NPC（家庭成員）
+NPCS_PER_HOUSE = 3  # 每個住宅的NPC數量
+FARMER_COUNT = 50  # 農夫（增加農業人口）
+DOCTOR_COUNT = 20  # 醫生（更多醫療人員）
+NURSE_COUNT = 40  # 護士（配合醫生數量）
+GUN_SHOP_STAFF_COUNT = 15  # 槍械店員工
+VENDOR_COUNT = 25  # 路邊小販（更多商業活動）
+STREET_VENDOR_COUNT = VENDOR_COUNT  # 為了相容性保留兩個名稱
 FISHING_SHOP_STAFF_COUNT = 20  # 釣魚店員工
 CONVENIENCE_STAFF_COUNT = 30  # 便利商店員工
-POWER_WORKER_COUNT = 30  # 電力系統員工
-HUNTER_COUNT = 20  # 獵人
+POWER_WORKER_COUNT = 25  # 電力系統員工（重要基礎設施）
+HUNTER_COUNT = 30  # 獵人（提供肉類等資源）
+# 其他職業，補足到399個NPC
+OTHER_PROFESSIONS_COUNT = 144  # 其他居民（家庭主婦、退休人員、學生等）
+
+######################NPC移動設定######################
+# NPC 移動速度 - 與玩家移動速度相同
+NPC_SPEED = PLAYER_SPEED  # NPC 和玩家使用相同的移動速度
+
+# NPC 車輛使用設定
+NPC_COMMUTE_DISTANCE_THRESHOLD = 200  # NPC 工作場所距離超過此值時會使用車輛
 
 ######################載具系統設定######################
 # 載具移動速度，單位為像素/幀

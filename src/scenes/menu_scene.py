@@ -125,10 +125,7 @@ class MenuScene(Scene):
         version_rect = version_text.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10))
         screen.blit(version_text, version_rect)
         
-        # 繪製操作提示
-        hint_text = version_font.render("使用 ↑↓ 選擇，Enter 確認", True, (200, 200, 200))
-        hint_rect = hint_text.get_rect(bottomleft=(10, SCREEN_HEIGHT - 10))
-        screen.blit(hint_text, hint_rect)
+        # 操作提示已移除
     
     def handle_event(self, event):
         """

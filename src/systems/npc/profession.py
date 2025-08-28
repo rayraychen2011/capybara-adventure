@@ -32,6 +32,7 @@ class Profession(Enum):
     # 其他專業
     POWER_WORKER = "電力系統員工"
     HUNTER = "獵人"
+    RESIDENT = "一般居民"  # 新增：沒有特殊職業的一般居民
 
     # 森林部落
     TRIBE_MEMBER = "部落成員"
@@ -59,6 +60,7 @@ class ProfessionData:
         Profession.CONVENIENCE_STORE_WORKER: 30,
         Profession.POWER_WORKER: 30,
         Profession.HUNTER: 20,
+        Profession.RESIDENT: 150,  # 一般居民
         Profession.TRIBE_MEMBER: 100,  # 森林部落
     }
 
@@ -75,6 +77,7 @@ class ProfessionData:
         Profession.CONVENIENCE_STORE_WORKER: ["便利商店"],
         Profession.POWER_WORKER: ["電力場", "各區域"],
         Profession.HUNTER: ["森林"],
+        Profession.RESIDENT: ["住宅區"],  # 一般居民主要在住宅區活動
         Profession.TRIBE_MEMBER: ["森林部落"],
     }
 
@@ -145,6 +148,12 @@ class ProfessionData:
             "work_end": 17,
             "break_start": 11,
             "break_end": 12,
+        },
+        Profession.RESIDENT: {
+            "work_start": 9,
+            "work_end": 17,
+            "break_start": 12,
+            "break_end": 13,
         },
         Profession.TRIBE_MEMBER: {
             "work_start": 6,
@@ -278,6 +287,7 @@ class ProfessionData:
             Profession.CONVENIENCE_STORE_WORKER: (0, 255, 0),  # 綠色
             Profession.POWER_WORKER: (255, 255, 0),  # 黃色
             Profession.HUNTER: (34, 139, 34),  # 森林綠
+            Profession.RESIDENT: (169, 169, 169),  # 淺灰色
             Profession.TRIBE_MEMBER: (160, 82, 45),  # 深棕色
         }
         return color_map.get(profession, (128, 128, 128))  # 預設灰色

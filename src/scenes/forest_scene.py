@@ -467,10 +467,7 @@ class ForestScene(Scene):
         # 準星圓圈
         pygame.draw.circle(screen, (255, 0, 0), (x, y), crosshair_size, 2)
 
-        # 顯示狩獵模式提示
-        font = pygame.font.Font(None, 24)
-        hint_text = font.render("狩獵模式 - 左鍵射擊，G 退出", True, (255, 255, 0))
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 60))
+        # 狩獵模式提示已移除
 
     def _draw_ui(self, screen):
         """
@@ -503,17 +500,7 @@ class ForestScene(Scene):
         # 繪製物品欄（畫面底下）
         self.player.draw_item_bar(screen)
 
-        # 顯示操作提示
-        if not self.hunting_mode:
-            hint_text = font.render(
-                "E: 收集 | G: 狩獵模式 | 1-0: 選擇物品欄 | D: 除錯",
-                True,
-                (255, 255, 255),
-            )
-        else:
-            hint_text = font.render("左鍵: 射擊 | G: 退出狩獵", True, (255, 255, 255))
-
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
+        # 操作提示已移除
 
     def handle_event(self, event):
         """

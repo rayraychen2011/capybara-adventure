@@ -1231,13 +1231,7 @@ class TownScene(Scene):
         # 繪製物品欄（畫面底下）
         self.player.draw_item_bar(screen)
 
-        # 顯示操作提示
-        hint_text = self.font_manager.render_text(
-            "E: 互動 | 1-0: 選擇物品欄 | Tab: NPC資訊 | 中鍵: 小地圖 | 滾輪: 縮放 | 走到邊界切換場景",
-            DEFAULT_FONT_SIZE,
-            (0, 0, 0),
-        )
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
+        # 操作提示已移除
 
         # 應用時間系統的視覺效果（天空顏色和光線遮罩）
         self._apply_time_visual_effects(screen)

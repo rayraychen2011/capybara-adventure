@@ -70,10 +70,11 @@ class NPCManager:
         初始化所有 NPC\n
         \n
         根據規格書要求創建所有 NPC 並分配職業\n
+        注意：已移除部落 NPC（100個），只創建小鎮 NPC（330個）\n
         \n
         參數:\n
         town_bounds (tuple): 小鎮邊界 (x, y, width, height)\n
-        forest_bounds (tuple): 森林邊界 (x, y, width, height)\n
+        forest_bounds (tuple): 森林邊界 (x, y, width, height) - 保留參數但不使用\n
         """
         print("開始創建 NPC...")
         # 初始化電力區域
@@ -82,11 +83,11 @@ class NPCManager:
         # 創建小鎮 NPC
         self._create_town_npcs(town_bounds)
 
-        # 創建森林部落 NPC
-        self._create_tribe_npcs(forest_bounds)
+        # 不再創建森林部落 NPC（依據需求移除）
+        print("已移除部落 NPC 創建（依據系統需求）")
 
-        # 合併所有 NPC
-        self.all_npcs = self.town_npcs + self.tribe_npcs
+        # 只包含小鎮 NPC
+        self.all_npcs = self.town_npcs
 
         # 分配工作場所
         self._assign_workplaces()
@@ -98,12 +99,12 @@ class NPCManager:
         self._verify_profession_distribution()
 
         print(
-            f"NPC 創建完成: 小鎮 {len(self.town_npcs)} 個, 部落 {len(self.tribe_npcs)} 個, 總計 {len(self.all_npcs)} 個"
+            f"NPC 創建完成: 小鎮 {len(self.town_npcs)} 個, 部落 0 個（已移除）, 總計 {len(self.all_npcs)} 個"
         )
 
     def set_buildings_reference(self, buildings):
         """
-        為所有 NPC 設定建築物參考，用於碰撞檢測\n
+        為所有 NPC 設定建築物參考，用於碰撞檢測和住宅分配\n
         \n
         參數:\n
         buildings (list): 建築物列表\n
@@ -114,7 +115,143 @@ class NPCManager:
         # 為每個 NPC 設定建築物引用
         for npc in self.all_npcs:
             npc.set_buildings_reference(buildings)
-        print(f"已為 {len(self.all_npcs)} 個 NPC 設定建築物碰撞檢測")
+        
+        # 分配 NPC 到住宅
+        self._assign_npcs_to_houses()
+        
+        print(f"已為 {len(self.all_npcs)} 個 NPC 設定建築物碰撞檢測並分配住宅")
+
+    def set_terrain_system_reference(self, terrain_system):
+        """
+        設定地形系統參考，用於碰撞檢測和路徑規劃\n
+        \n
+        參數:\n
+        terrain_system (TerrainBasedSystem): 地形系統實例\n
+        """
+        self.terrain_system = terrain_system
+        
+        # 為所有 NPC 設定地形系統參考
+        for npc in self.all_npcs:
+            npc.set_terrain_system_reference(terrain_system)
+        
+        print(f"已為 {len(self.all_npcs)} 個 NPC 設定地形系統參考")
+
+    def _assign_npcs_to_houses(self):
+        """
+        將 NPC 分配到住宅中\n
+        新需求：玩家之家不分配NPC，其餘住宅平均分配\n
+        """
+        # 找出所有住宅建築
+        houses = []
+        player_home = None
+        
+        for building in self.buildings:
+            if hasattr(building, 'building_type') and building.building_type == "house":
+                if hasattr(building, 'is_player_home') and building.is_player_home:
+                    player_home = building
+                    print(f"找到玩家之家：{building.name}")
+                else:
+                    houses.append(building)
+        
+        if not houses:
+            print("警告：找不到可分配的住宅建築（除了玩家之家）")
+            return
+        
+        if player_home is None:
+            print("警告：找不到玩家之家")
+            return
+        
+        print(f"找到 {len(houses)} 個可分配的住宅（玩家之家已排除）")
+        
+        # 計算每個住宅應該分配的NPC數量
+        total_npcs = len(self.all_npcs)
+        npcs_per_house = total_npcs // len(houses)
+        remaining_npcs = total_npcs % len(houses)
+        
+        print(f"將 {total_npcs} 個NPC分配到 {len(houses)} 個住宅")
+        print(f"每個住宅基本分配 {npcs_per_house} 個NPC，{remaining_npcs} 個住宅額外分配1個")
+        
+        npc_index = 0
+        successful_assignments = 0
+        
+        for i, house in enumerate(houses):
+            # 計算這個住宅應該分配多少個 NPC
+            npcs_for_this_house = npcs_per_house
+            if i < remaining_npcs:
+                npcs_for_this_house += 1
+            
+            print(f"為住宅 {house.name} 分配 {npcs_for_this_house} 個NPC")
+            
+            # 分配 NPC 到這個住宅
+            house_assignments = 0
+            for j in range(npcs_for_this_house):
+                if npc_index < len(self.all_npcs):
+                    npc = self.all_npcs[npc_index]
+                    
+                    # 如果是新的住宅類別並且有 add_resident 方法
+                    if hasattr(house, 'add_resident'):
+                        if house.add_resident(npc):
+                            # 設定 NPC 的初始位置為住宅中心
+                            house_center_x = house.x + house.width // 2
+                            house_center_y = house.y + house.height // 2
+                            npc.x = house_center_x
+                            npc.y = house_center_y
+                            house_assignments += 1
+                            successful_assignments += 1
+                            print(f"  - NPC {npc.name} ({npc.profession.value}) 分配到住宅成功")
+                        else:
+                            print(f"  - 住宅 {house.name} 已滿，無法分配 NPC {npc.name}")
+                    else:
+                        # 舊版建築，直接設定位置
+                        house_center_x = house.x + house.width // 2
+                        house_center_y = house.y + house.height // 2
+                        npc.set_home((house_center_x, house_center_y))
+                        npc.x = house_center_x
+                        npc.y = house_center_y
+                        house_assignments += 1
+                        successful_assignments += 1
+                        print(f"  - NPC {npc.name} ({npc.profession.value}) 分配到舊版住宅")
+                    
+                    npc_index += 1
+                else:
+                    break
+            
+            print(f"住宅 {house.name} 實際分配了 {house_assignments} 個NPC")
+        
+        print(f"住宅分配完成：成功分配 {successful_assignments} 個NPC到 {len(houses)} 個住宅中")
+        print(f"玩家之家 {player_home.name} 保留給玩家使用")
+        
+        # 驗證分配結果
+        self._verify_housing_assignments()
+
+    def _verify_housing_assignments(self):
+        """
+        驗證住宅分配結果\n
+        """
+        print("\n=== 住宅分配驗證 ===")
+        
+        total_housed_npcs = 0
+        for building in self.buildings:
+            if hasattr(building, 'building_type') and building.building_type == "house":
+                if hasattr(building, 'residents'):
+                    resident_count = len(building.residents)
+                    total_housed_npcs += resident_count
+                    
+                    if hasattr(building, 'is_player_home') and building.is_player_home:
+                        print(f"🏠 {building.name}（玩家之家）: {resident_count} 個居民")
+                    else:
+                        print(f"🏘️ {building.name}: {resident_count} 個居民")
+                        
+                        # 列出居民詳情
+                        if resident_count > 0:
+                            residents_info = []
+                            for resident in building.residents:
+                                residents_info.append(f"{resident.name}({resident.profession.value})")
+                            print(f"   居民: {', '.join(residents_info)}")
+        
+        print(f"總計: {total_housed_npcs} 個NPC已分配住宅")
+        print(f"未分配住宅的NPC: {len(self.all_npcs) - total_housed_npcs} 個")
+        print("===================\n")
 
     def set_road_system_reference(self, road_system):
         """
@@ -177,27 +314,32 @@ class NPCManager:
     def _create_town_npcs(self, town_bounds):
         """
         創建小鎮 NPC\n
+        根據新需求：NPC數量 = 住宅總數 - 1（玩家佔用一戶）\n
         \n
         參數:\n
         town_bounds (tuple): 小鎮邊界\n
         """
+        from config.settings import TOTAL_TOWN_NPCS
+        
         town_x, town_y, town_width, town_height = town_bounds
 
-        # 生成職業分配列表 (不包含部落成員)
-        town_professions = []
-        for profession, count in ProfessionData.PROFESSION_COUNTS.items():
-            if profession != Profession.TRIBE_MEMBER:
-                town_professions.extend([profession] * count)
+        # 使用配置檔案中的NPC數量
+        target_npc_count = TOTAL_TOWN_NPCS
+        print(f"目標創建 {target_npc_count} 個小鎮 NPC（根據住宅數量計算）")
+
+        # 生成職業分配列表（根據新的職業配額）
+        town_professions = self._generate_profession_list(target_npc_count)
 
         # 隨機打亂職業順序
         random.shuffle(town_professions)
 
         # 創建 NPC
-        for profession in town_professions:
+        for i, profession in enumerate(town_professions):
             # 在小鎮範圍內隨機位置創建 NPC，避開建築物
             position = self._find_safe_spawn_position(town_bounds)
 
             npc = NPC(profession, position)
+            npc.name = f"{profession.value}{i+1}"  # 給每個NPC一個唯一名稱
             self.town_npcs.append(npc)
 
             # 更新職業統計
@@ -206,6 +348,66 @@ class NPCManager:
             # 特殊處理電力工人
             if profession == Profession.POWER_WORKER:
                 self._assign_power_area_to_worker(npc)
+
+        print(f"創建了 {len(self.town_npcs)} 個小鎮 NPC")
+
+    def _generate_profession_list(self, total_npcs):
+        """
+        根據設定檔生成職業分配列表\n
+        \n
+        參數:\n
+        total_npcs (int): 總NPC數量\n
+        \n
+        回傳:\n
+        list: 職業列表\n
+        """
+        from config.settings import (
+            FARMER_COUNT, DOCTOR_COUNT, NURSE_COUNT, GUN_SHOP_STAFF_COUNT,
+            STREET_VENDOR_COUNT, FISHING_SHOP_STAFF_COUNT, CONVENIENCE_STAFF_COUNT,
+            POWER_WORKER_COUNT, HUNTER_COUNT, OTHER_PROFESSIONS_COUNT
+        )
+        
+        # 職業配額對應表
+        profession_quotas = {
+            Profession.FARMER: FARMER_COUNT,
+            Profession.DOCTOR: DOCTOR_COUNT,
+            Profession.NURSE: NURSE_COUNT,
+            Profession.GUN_SHOP_WORKER: GUN_SHOP_STAFF_COUNT,
+            Profession.STREET_VENDOR: STREET_VENDOR_COUNT,
+            Profession.FISHING_SHOP_WORKER: FISHING_SHOP_STAFF_COUNT,
+            Profession.CONVENIENCE_STORE_WORKER: CONVENIENCE_STAFF_COUNT,
+            Profession.POWER_WORKER: POWER_WORKER_COUNT,
+            Profession.HUNTER: HUNTER_COUNT,
+            Profession.RESIDENT: OTHER_PROFESSIONS_COUNT  # 其他一般居民
+        }
+        
+        # 計算已分配的職業數量
+        allocated_count = sum(profession_quotas.values())
+        
+        # 如果已分配數量小於總數，用農夫填補
+        if allocated_count < total_npcs:
+            profession_quotas[Profession.FARMER] += (total_npcs - allocated_count)
+            print(f"用農夫填補剩餘 {total_npcs - allocated_count} 個NPC位置")
+        elif allocated_count > total_npcs:
+            # 如果超出，按比例縮減
+            scale_factor = total_npcs / allocated_count
+            for profession in profession_quotas:
+                profession_quotas[profession] = int(profession_quotas[profession] * scale_factor)
+            print(f"按比例縮減職業配額以適應 {total_npcs} 個NPC")
+        
+        # 生成職業列表
+        professions = []
+        for profession, count in profession_quotas.items():
+            professions.extend([profession] * count)
+        
+        # 確保列表長度正確
+        while len(professions) < total_npcs:
+            professions.append(Profession.FARMER)  # 用農夫填補
+        
+        professions = professions[:total_npcs]  # 截斷多餘的
+        
+        print(f"職業分配：{dict(profession_quotas)}")
+        return professions
 
     def _find_safe_spawn_position(self, town_bounds, max_attempts=50):
         """

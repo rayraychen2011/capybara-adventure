@@ -5,7 +5,7 @@ from config.settings import *
 from src.core.state_manager import StateManager, GameState
 from src.core.scene_manager import SceneManager
 from src.scenes.menu_scene import MenuScene
-from src.scenes.town_scene import TownScene
+from src.scenes.town.town_scene_refactored import TownScene
 from src.scenes.forest_scene import ForestScene
 from src.scenes.lake_scene import LakeScene
 from src.scenes.home_scene import HomeScene
@@ -102,9 +102,11 @@ class GameEngine:
             self.scene_manager.register_scene("menu", menu_scene)
 
             # 建立小鎮場景，傳入時間管理器和電力管理器
+            print("開始創建 TownScene...")
             town_scene = TownScene(
                 self.state_manager, self.time_manager, self.power_manager
             )
+            print("TownScene 創建完成")
             self.scene_manager.register_scene(SCENE_TOWN, town_scene)
 
             # 設定當前玩家為小鎮場景的玩家
@@ -166,6 +168,10 @@ class GameEngine:
             # 切換到背包場景
             self.scene_manager.change_scene("inventory")
 
+        elif new_state == GameState.HOME:
+            # 切換到家的場景
+            self.scene_manager.change_scene(SCENE_HOME)
+
     def handle_events(self):
         """
         處理所有輸入事件\n
@@ -190,7 +196,7 @@ class GameEngine:
                     elif self.state_manager.is_state(GameState.MENU):
                         self.state_manager.change_state(GameState.QUIT)
                     else:
-                        # 其他狀態下 ESC 返回遊戲
+                        # 其他狀態下 ESC 返回遊戲（包括 HOME、INVENTORY 等）
                         self.state_manager.change_state(GameState.PLAYING)
                     continue
 

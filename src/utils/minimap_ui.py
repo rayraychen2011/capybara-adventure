@@ -19,7 +19,7 @@ class MinimapUI:
         初始化小地圖UI\n
         """
         # 小地圖基本屬性
-        self.is_visible = False  # 小地圖是否顯示
+        self.is_visible = True  # 小地圖預設顯示（依據需求）
         self.zoom_level = MINIMAP_DEFAULT_ZOOM  # 當前縮放等級
         
         # 小地圖表面
@@ -48,23 +48,13 @@ class MinimapUI:
 
     def handle_scroll(self, scroll_direction):
         """
-        處理中鍵滾動事件\n
+        處理中鍵滾動事件 - 縮放功能已禁用\n
         \n
         參數:\n
         scroll_direction (int): 滾動方向，正數為向上滾動，負數為向下滾動\n
         """
-        if not self.is_visible:
-            return
-            
-        # 根據滾動方向調整縮放等級
-        if scroll_direction > 0:
-            # 向上滾動 - 放大
-            self.zoom_level = min(MINIMAP_MAX_ZOOM, self.zoom_level + MINIMAP_ZOOM_STEP)
-        else:
-            # 向下滾動 - 縮小
-            self.zoom_level = max(MINIMAP_MIN_ZOOM, self.zoom_level - MINIMAP_ZOOM_STEP)
-        
-        print(f"小地圖縮放等級: {self.zoom_level:.1f}")
+        # 根據需求，縮放功能已被移除
+        print("小地圖縮放功能已禁用")
 
     def world_to_minimap(self, world_x, world_y):
         """
@@ -199,8 +189,8 @@ class MinimapUI:
         terrain_width = len(terrain_data[0]) if terrain_data else 0
         terrain_height = len(terrain_data)
         
-        # 假設每個地形格子的大小
-        terrain_cell_size = 50  # 可以根據實際地形系統調整
+        # 假設每個地形格子的大小 - 與 TerrainBasedSystem 的 tile_size 匹配
+        terrain_cell_size = 40  # 與 TerrainBasedSystem 保持一致
         
         for row in range(terrain_height):
             for col in range(terrain_width):
@@ -322,3 +312,30 @@ class MinimapUI:
         zoom (float): 要設定的縮放等級\n
         """
         self.zoom_level = max(MINIMAP_MIN_ZOOM, min(MINIMAP_MAX_ZOOM, zoom))
+
+    def handle_mouse_input(self, event):
+        """
+        處理滑鼠輸入事件\n
+        \n
+        處理中鍵點擊切換顯示和滾輪縮放功能\n
+        \n
+        參數:\n
+        event (pygame.event.Event): 滑鼠事件\n
+        \n
+        回傳:\n
+        bool: 事件是否被處理\n
+        """
+        # 處理中鍵點擊切換小地圖顯示
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 2:  # 滑鼠中鍵
+                self.toggle_visibility()
+                return True
+        
+        # 處理滾輪縮放（只有在小地圖顯示時才處理）
+        elif event.type == pygame.MOUSEWHEEL and self.is_visible:
+            # 向上滾動放大，向下滾動縮小
+            scroll_direction = event.y
+            self.handle_scroll(scroll_direction)
+            return True
+        
+        return False

@@ -4,6 +4,7 @@ import random
 import time
 from src.systems.wildlife.animal import Animal, AnimalState
 from src.systems.wildlife.animal_data import AnimalType, AnimalData
+from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 
 ######################野生動物管理器######################
@@ -28,8 +29,8 @@ class WildlifeManager:
         初始化野生動物管理器\n
         """
         # 動物群體容器
-        self.forest_animals = []  # 森林動物
-        self.lake_animals = []  # 湖泊動物
+        self.forest_animals = []  # 森林動物 (地形代碼1)
+        self.lake_animals = []  # 湖泊動物 (地形代碼2)
         self.all_animals = []  # 所有動物的統一列表
 
         # 生成控制
@@ -41,6 +42,9 @@ class WildlifeManager:
         # 環境邊界 (會從場景傳入)
         self.forest_bounds = (100, 100, 600, 400)  # 森林區域邊界
         self.lake_bounds = (200, 200, 400, 300)  # 湖泊區域邊界
+
+        # 地形系統引用 - 用於檢查地形代碼
+        self.terrain_system = None
 
         # 互動檢測
         self.interaction_range = 50  # 玩家互動範圍
@@ -68,6 +72,56 @@ class WildlifeManager:
         self.forest_bounds = forest_bounds
         self.lake_bounds = lake_bounds
         print(f"設定棲息地邊界 - 森林: {forest_bounds}, 湖泊: {lake_bounds}")
+
+    def set_terrain_system(self, terrain_system):
+        """
+        設定地形系統引用\n
+        \n
+        參數:\n
+        terrain_system (TerrainBasedSystem): 地形系統實例\n
+        """
+        self.terrain_system = terrain_system
+        print("野生動物管理器已連結地形系統")
+
+    def _find_terrain_positions(self, terrain_code, max_positions=20):
+        """
+        找出指定地形代碼的位置\n
+        \n
+        參數:\n
+        terrain_code (int): 地形代碼 (1=森林, 2=水域)\n
+        max_positions (int): 最大搜尋位置數量\n
+        \n
+        回傳:\n
+        list: 符合地形代碼的位置列表 [(x, y), ...]\n
+        """
+        if not self.terrain_system:
+            return []
+        
+        positions = []
+        map_width = self.terrain_system.map_width
+        map_height = self.terrain_system.map_height
+        tile_size = self.terrain_system.tile_size
+        
+        # 隨機搜尋地形位置
+        attempts = 0
+        max_attempts = max_positions * 10  # 避免無限迴圈
+        
+        while len(positions) < max_positions and attempts < max_attempts:
+            attempts += 1
+            
+            # 隨機選擇一個位置
+            tile_x = random.randint(0, map_width - 1)
+            tile_y = random.randint(0, map_height - 1)
+            
+            # 轉換為世界座標
+            world_x = tile_x * tile_size + tile_size // 2
+            world_y = tile_y * tile_size + tile_size // 2
+            
+            # 檢查地形代碼
+            if self.terrain_system.get_terrain_at_position(world_x, world_y) == terrain_code:
+                positions.append((world_x, world_y))
+        
+        return positions
 
     def initialize_animals(self, scene_type="all"):
         """
@@ -122,7 +176,7 @@ class WildlifeManager:
 
     def _spawn_animal(self, animal_type, habitat):
         """
-        生成新動物\n
+        生成新動物 - 基於地形代碼的位置選擇\n
         \n
         參數:\n
         animal_type (AnimalType): 動物種類\n
@@ -131,15 +185,17 @@ class WildlifeManager:
         回傳:\n
         Animal: 生成的動物物件\n
         """
-        # 根據棲息地選擇邊界和容器
+        # 根據棲息地選擇容器和地形代碼
         if habitat == "forest":
-            bounds = self.forest_bounds
             container = self.forest_animals
             max_count = self.max_forest_animals
+            terrain_code = 1  # 森林地形代碼
+            bounds = self.forest_bounds  # 後備邊界
         elif habitat == "lake":
-            bounds = self.lake_bounds
             container = self.lake_animals
             max_count = self.max_lake_animals
+            terrain_code = 2  # 水域地形代碼
+            bounds = self.lake_bounds  # 後備邊界
         else:
             print(f"未知的棲息地類型: {habitat}")
             return None
@@ -148,24 +204,39 @@ class WildlifeManager:
         if len(container) >= max_count:
             return None
 
-        # 在棲息地範圍內生成隨機位置
-        # 檢查邊界有效性
-        if bounds[2] <= 60 or bounds[3] <= 60:  # 寬度或高度太小
-            print(f"棲息地 {habitat} 邊界太小，無法生成動物: {bounds}")
-            return None
+        # 嘗試在對應地形代碼的位置生成動物
+        if self.terrain_system:
+            terrain_positions = self._find_terrain_positions(terrain_code, 5)
+            if terrain_positions:
+                # 從符合地形的位置中隨機選擇
+                x, y = random.choice(terrain_positions)
+            else:
+                # 如果找不到合適的地形位置，使用後備邊界
+                print(f"找不到地形代碼 {terrain_code} 的位置，使用後備邊界")
+                x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
+                y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
+        else:
+            # 沒有地形系統時使用原始邊界生成方法
+            if bounds[2] <= 60 or bounds[3] <= 60:  # 寬度或高度太小
+                print(f"棲息地 {habitat} 邊界太小，無法生成動物: {bounds}")
+                return None
 
-        x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
-        y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
+            x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
+            y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
 
         # 創建動物
         animal = Animal(animal_type, (x, y), bounds, habitat)
+        
+        # 設定地形系統引用
+        if self.terrain_system:
+            animal.set_terrain_system(self.terrain_system)
 
         # 添加到對應容器
         container.append(animal)
         self.all_animals.append(animal)
         self.total_spawned += 1
 
-        print(f"在 {habitat} 生成 {animal_type.value} (總計: {self.total_spawned})")
+        print(f"在 {habitat} (地形代碼:{terrain_code}) 生成 {animal_type.value} (總計: {self.total_spawned})")
         return animal
 
     def update(self, dt, player_position, current_scene):
@@ -178,10 +249,16 @@ class WildlifeManager:
         current_scene (str): 當前場景名稱\n
         """
         # 根據場景決定要更新的動物群體
-        if current_scene == "forest":
+        if current_scene in ["forest", "town"]:  # 小鎮場景也包含森林動物
             active_animals = self.forest_animals
-        elif current_scene == "lake":
-            active_animals = self.lake_animals
+        elif current_scene in ["lake", "town"]:  # 小鎮場景也包含湖泊動物
+            if current_scene == "town":
+                # 在小鎮場景中，同時更新森林和湖泊動物
+                forest_animals = self.forest_animals
+                lake_animals = self.lake_animals
+                active_animals = forest_animals + lake_animals
+            else:
+                active_animals = self.lake_animals
         else:
             active_animals = []  # 其他場景沒有野生動物
 
@@ -210,9 +287,9 @@ class WildlifeManager:
         if current_time - self.last_spawn_time < self.spawn_cooldown:
             return
 
-        # 只在對應場景生成動物
+        # 在小鎮場景或森林場景生成森林動物
         if (
-            current_scene == "forest"
+            current_scene in ["forest", "town"]
             and len(self.forest_animals) < self.max_forest_animals
         ):
             # 選擇森林動物種類 (根據稀有度加權)
@@ -231,7 +308,11 @@ class WildlifeManager:
                 self._spawn_animal(animal_type, "forest")
                 self.last_spawn_time = current_time
 
-        elif current_scene == "lake" and len(self.lake_animals) < self.max_lake_animals:
+        # 在小鎮場景或湖泊場景生成湖泊動物
+        elif (
+            current_scene in ["lake", "town"] 
+            and len(self.lake_animals) < self.max_lake_animals
+        ):
             # 選擇湖泊動物種類
             spawn_weights = {
                 AnimalType.CARP: 25,  # 很常見
@@ -506,18 +587,38 @@ class WildlifeManager:
             "protected_kills": len(self.protected_kills),
         }
 
-    def draw_all_animals(self, screen, scene_name):
+    def draw_all_animals(self, screen, scene_name, camera_offset=(0, 0)):
         """
         繪製指定場景的所有動物\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         scene_name (str): 場景名稱\n
+        camera_offset (tuple): 攝影機偏移 (camera_x, camera_y)\n
         """
-        animals = self.get_animals_in_scene(scene_name)
+        # 根據場景決定要繪製的動物
+        if scene_name in ["forest", "town"]:
+            animals_to_draw = self.forest_animals + self.lake_animals  # 小鎮場景繪製所有動物
+        elif scene_name == "lake":
+            animals_to_draw = self.lake_animals
+        else:
+            animals_to_draw = []
 
-        for animal in animals:
-            animal.draw(screen)
+        camera_x, camera_y = camera_offset
+
+        for animal in animals_to_draw:
+            if animal.is_alive:
+                # 計算動物在螢幕上的位置
+                screen_x = animal.x - camera_x
+                screen_y = animal.y - camera_y
+                
+                # 只繪製在螢幕範圍內的動物
+                if -50 <= screen_x <= SCREEN_WIDTH + 50 and -50 <= screen_y <= SCREEN_HEIGHT + 50:
+                    # 暫時設定動物的螢幕位置然後繪製
+                    original_x, original_y = animal.x, animal.y
+                    animal.x, animal.y = screen_x, screen_y
+                    animal.draw(screen)
+                    animal.x, animal.y = original_x, original_y
 
     def draw_debug_info(self, screen, font, scene_name):
         """

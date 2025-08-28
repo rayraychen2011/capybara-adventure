@@ -3,6 +3,7 @@ import pygame
 import random
 import math
 from config.settings import *
+from src.systems.furniture_system import HouseInteriorManager
 
 
 ######################建築類別######################
@@ -403,6 +404,339 @@ class Hospital(Building):
         return {"success": True, "message": "您已在醫院重生"}
 
 
+######################住宅建築######################
+class ResidentialHouse(Building):
+    """
+    住宅建築 - 專門的住宅類別\n
+    \n
+    提供住宅的特殊功能：\n
+    - 居民管理\n
+    - 內部檢視\n
+    - 正方形外觀\n
+    - 玩家之家特殊標記\n
+    - 家具佈置系統\n
+    - 門系統\n
+    """
+
+    def __init__(self, building_type, position, size):
+        """
+        初始化住宅\n
+        \n
+        參數:\n
+        building_type (str): 建築類型\n
+        position (tuple): 位置 (x, y)\n
+        size (tuple): 尺寸 (width, height)\n
+        """
+        super().__init__(building_type, position, size)
+        
+        # 住宅特殊屬性
+        self.residents = []  # 居民列表
+        self.max_residents = 3  # 最多3個居民
+        self.is_player_home = False  # 是否為玩家之家
+        self.interior_visible = False  # 是否顯示內部檢視
+        
+        # 住宅外觀設定為正方形
+        self.color = (160, 82, 45)  # 住宅標準顏色
+        
+        # 內部佈置系統
+        self.interior_manager = HouseInteriorManager()
+        self.interior = None  # 住宅內部佈置
+        self.has_interior = False  # 是否已生成內部佈置
+        
+        # 玩家在住宅內的位置（僅在內部檢視時使用）
+        self.player_interior_position = None
+
+    def initialize_interior(self):
+        """
+        初始化住宅內部佈置（延遲載入）\n
+        """
+        if not self.has_interior:
+            self.interior = self.interior_manager.create_interior_for_house(self)
+            self.has_interior = True
+            print(f"為住宅 {self.name} 創建了內部佈置")
+
+    def add_resident(self, npc):
+        """
+        添加居民到住宅\n
+        \n
+        參數:\n
+        npc (NPC): 要添加的NPC\n
+        \n
+        回傳:\n
+        bool: 是否成功添加\n
+        """
+        if len(self.residents) >= self.max_residents:
+            return False
+        
+        self.residents.append(npc)
+        npc.set_home((self.x + self.width // 2, self.y + self.height // 2))
+        print(f"NPC {npc.name} 被分配到住宅 {self.name}")
+        return True
+
+    def remove_resident(self, npc):
+        """
+        從住宅移除居民\n
+        \n
+        參數:\n
+        npc (NPC): 要移除的NPC\n
+        """
+        if npc in self.residents:
+            self.residents.remove(npc)
+            print(f"NPC {npc.name} 離開住宅 {self.name}")
+
+    def get_resident_count(self):
+        """
+        獲取住宅內居民數量\n
+        \n
+        回傳:\n
+        int: 居民數量\n
+        """
+        return len(self.residents)
+
+    def is_full(self):
+        """
+        檢查住宅是否已滿\n
+        \n
+        回傳:\n
+        bool: 是否已滿\n
+        """
+        return len(self.residents) >= self.max_residents
+
+    def toggle_interior_view(self, player):
+        """
+        切換住宅內部檢視\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        \n
+        回傳:\n
+        dict: 切換結果\n
+        """
+        # 確保內部佈置已初始化
+        if not self.has_interior:
+            self.initialize_interior()
+        
+        self.interior_visible = not self.interior_visible
+        
+        if self.interior_visible:
+            # 進入內部檢視 - 將玩家移至住宅內部的入口門附近
+            entrance_door = None
+            for door in self.interior["doors"]:
+                if door.door_type == "entrance":
+                    entrance_door = door
+                    break
+            
+            if entrance_door:
+                self.player_interior_position = (
+                    entrance_door.x + entrance_door.width // 2,
+                    entrance_door.y - 10  # 玩家位置稍微往上一點
+                )
+            else:
+                # 如果沒有找到入口門，將玩家放在住宅中央
+                self.player_interior_position = (self.width // 2, self.height // 2)
+            
+            return {
+                "success": True,
+                "action": "enter_interior",
+                "message": f"進入{self.name}內部",
+                "interior_position": self.player_interior_position
+            }
+        else:
+            # 離開內部檢視 - 將玩家移至住宅外部
+            self.player_interior_position = None
+            return {
+                "success": True,
+                "action": "exit_interior",
+                "message": f"離開{self.name}",
+                "exterior_position": (self.x + self.width // 2, self.y + self.height + 15)
+            }
+
+    def get_nearby_interactive_objects(self, player_position, max_distance=20):
+        """
+        獲取玩家附近可互動的物件（僅在內部檢視時）\n
+        \n
+        參數:\n
+        player_position (tuple): 玩家在住宅內的位置\n
+        max_distance (float): 最大互動距離\n
+        \n
+        回傳:\n
+        list: 可互動的物件列表\n
+        """
+        if not self.interior_visible or not self.has_interior:
+            return []
+        
+        return self.interior_manager.get_interactive_objects_near_player(
+            self.interior, player_position, max_distance
+        )
+
+    def interact_with_interior_object(self, object_type, obj, player):
+        """
+        與住宅內部物件互動\n
+        \n
+        參數:\n
+        object_type (str): 物件類型 ("furniture" 或 "door")\n
+        obj: 物件實例\n
+        player (Player): 玩家物件\n
+        \n
+        回傳:\n
+        dict: 互動結果\n
+        """
+        if object_type == "door" and obj.door_type == "entrance":
+            # 與入口門互動 - 切換內外檢視
+            return self.toggle_interior_view(player)
+        else:
+            # 與其他物件互動
+            return obj.interact(player)
+
+    def interact(self, player):
+        """
+        住宅互動 - 顯示內部狀況或進入內部檢視\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        \n
+        回傳:\n
+        dict: 互動結果\n
+        """
+        if self.is_player_home:
+            # 玩家之家的特殊互動 - 直接進入內部檢視
+            return self.toggle_interior_view(player)
+        else:
+            # 一般住宅的內部檢視
+            return {
+                "success": True,
+                "building": self,
+                "message": f"住宅內部 - 居民數量: {len(self.residents)}/{self.max_residents}",
+                "action": "view_exterior",
+                "residents": self.residents,
+            }
+
+    def draw(self, screen, camera_x=0, camera_y=0):
+        """
+        繪製住宅 - 正方形外觀和內部檢視\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        camera_x (float): 攝影機X偏移\n
+        camera_y (float): 攝影機Y偏移\n
+        """
+        # 計算螢幕座標
+        screen_x = self.x - camera_x
+        screen_y = self.y - camera_y
+        screen_rect = pygame.Rect(screen_x, screen_y, self.width, self.height)
+        
+        if self.interior_visible:
+            # 內部檢視模式 - 繪製住宅內部
+            self._draw_interior_view(screen, camera_x, camera_y)
+        else:
+            # 外部檢視模式 - 繪製住宅外觀
+            self._draw_exterior_view(screen, screen_rect)
+
+    def _draw_exterior_view(self, screen, screen_rect):
+        """
+        繪製住宅外觀\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        screen_rect (pygame.Rect): 螢幕矩形\n
+        """
+        # 繪製住宅主體（正方形）
+        pygame.draw.rect(screen, self.color, screen_rect)
+        pygame.draw.rect(screen, (0, 0, 0), screen_rect, 2)
+
+        # 如果是玩家之家，添加特殊標記
+        if self.is_player_home:
+            # 繪製家的標記（小星星或特殊符號）
+            center_x = screen_rect.centerx
+            center_y = screen_rect.centery
+            pygame.draw.circle(screen, (255, 255, 0), (center_x, center_y), 8)
+            
+            # 繪製家的標誌文字
+            font = pygame.font.Font(None, 16)
+            text = font.render("家", True, (0, 0, 0))
+            text_rect = text.get_rect(center=(center_x, center_y))
+            screen.blit(text, text_rect)
+        else:
+            # 一般住宅顯示居民數量
+            font = pygame.font.Font(None, 20)
+            text = font.render(f"{len(self.residents)}", True, (255, 255, 255))
+            text_rect = text.get_rect(center=screen_rect.center)
+            screen.blit(text, text_rect)
+
+    def _draw_interior_view(self, screen, camera_x, camera_y):
+        """
+        繪製住宅內部檢視\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        camera_x (float): 攝影機X偏移\n
+        camera_y (float): 攝影機Y偏移\n
+        """
+        # 確保內部佈置已初始化
+        if not self.has_interior:
+            self.initialize_interior()
+        
+        # 繪製住宅內部背景
+        screen_x = self.x - camera_x
+        screen_y = self.y - camera_y
+        interior_rect = pygame.Rect(screen_x, screen_y, self.width, self.height)
+        
+        # 內部地板（米色）
+        pygame.draw.rect(screen, (245, 245, 220), interior_rect)
+        # 內部牆壁邊框
+        pygame.draw.rect(screen, (139, 69, 19), interior_rect, 3)
+        
+        # 繪製家具和門
+        if self.interior:
+            self.interior_manager.draw_interior(
+                screen, self.interior, self.x, self.y, camera_x, camera_y
+            )
+        
+        # 繪製內部檢視標記
+        font = pygame.font.Font(None, 16)
+        title_text = font.render(f"{self.name} - 內部檢視", True, (0, 0, 0))
+        screen.blit(title_text, (screen_x, screen_y - 20))
+
+    def get_resident_info(self):
+        """
+        獲取住宅居民資訊\n
+        \n
+        回傳:\n
+        list: 居民資訊列表\n
+        """
+        resident_info = []
+        for resident in self.residents:
+            info = {
+                "name": resident.name,
+                "profession": resident.profession.value if hasattr(resident, 'profession') else "無業",
+                "status": "在家" if not resident.is_at_work else "工作中",
+                "is_injured": resident.is_injured if hasattr(resident, 'is_injured') else False,
+            }
+            resident_info.append(info)
+        return resident_info
+
+    def get_interior_stats(self):
+        """
+        獲取住宅內部統計資訊\n
+        \n
+        回傳:\n
+        dict: 內部統計\n
+        """
+        if not self.has_interior:
+            return {"furniture_count": 0, "door_count": 0, "layout_type": "未初始化"}
+        
+        furniture_count = len(self.interior["furniture"])
+        door_count = len(self.interior["doors"])
+        layout_type = self.interior["layout_type"]
+        
+        return {
+            "furniture_count": furniture_count,
+            "door_count": door_count,
+            "layout_type": layout_type,
+            "is_interior_visible": self.interior_visible
+        }
+
+
 ######################網格建築管理器######################
 class GridBuildingManager:
     """
@@ -690,37 +1024,42 @@ class GridBuildingManager:
 
     def _create_residential_buildings(self, start_grid_x, start_grid_y, end_grid_x, end_grid_y):
         """
-        創建住宅建築\n
+        創建住宅建築 - 限制為4個住宅，外觀改為正方形\n
         """
         residential_created = 0
-        target_count = HOUSE_COUNT
+        target_count = 4  # 明確限制為4個住宅
 
+        # 在住宅區網格範圍內只創建4個住宅
         for grid_y in range(start_grid_y, end_grid_y):
             for grid_x in range(start_grid_x, end_grid_x):
                 if residential_created >= target_count:
                     break
 
-                # 每個網格最多放置6個住宅
-                buildings_in_grid = min(RESIDENTIAL_MAX_PER_GRID, target_count - residential_created)
+                # 創建一個住宅
+                # 住宅尺寸：正方形外觀，大小統一
+                width = 60   # 正方形寬度
+                height = 60  # 正方形高度
                 
-                for i in range(buildings_in_grid):
-                    # 住宅尺寸：使用設定檔中的住宅尺寸（玩家的5倍）
-                    width = random.randint(RESIDENTIAL_MIN_SIZE, RESIDENTIAL_MIN_SIZE + 20)
-                    height = random.randint(RESIDENTIAL_HEIGHT, RESIDENTIAL_HEIGHT + 15)
-                    
-                    # 創建住宅
-                    house = Building("house", (0, 0), (width, height))
-                    
-                    # 嘗試放置在網格中
-                    if self.place_building(house, grid_x, grid_y, "residential"):
-                        residential_created += 1
-                    else:
-                        break  # 如果無法放置，跳到下一個網格
+                # 創建住宅
+                house = ResidentialHouse("house", (0, 0), (width, height))
+                
+                # 檢查是否為玩家之家（第一個住宅）
+                if residential_created == 0:
+                    house.is_player_home = True
+                    house.name = "玩家之家"
+                    house.color = (255, 215, 0)  # 金色標記玩家之家
+                
+                # 嘗試放置在網格中
+                if self.place_building(house, grid_x, grid_y, "residential"):
+                    residential_created += 1
+                else:
+                    # 如果無法放置，嘗試下一個網格
+                    continue
 
             if residential_created >= target_count:
                 break
 
-        print(f"創建了 {residential_created} 座住宅建築")
+        print(f"創建了 {residential_created} 座住宅建築（包含1座玩家之家）")
 
     def _create_commercial_buildings(self, start_grid_x, start_grid_y, end_grid_x, end_grid_y):
         """
@@ -865,6 +1204,45 @@ class GridBuildingManager:
         """
         for building in self.buildings:
             building.draw(screen)
+
+    def get_player_home(self):
+        """
+        獲取玩家之家建築\n
+        \n
+        回傳:\n
+        ResidentialHouse: 玩家之家建築物件，如果找不到則回傳 None\n
+        """
+        for building in self.buildings:
+            if hasattr(building, 'is_player_home') and building.is_player_home:
+                return building
+        return None
+
+    def get_player_home_position(self):
+        """
+        獲取玩家之家的中心位置\n
+        \n
+        回傳:\n
+        tuple: 玩家之家的中心位置 (x, y)，如果找不到則回傳 None\n
+        """
+        player_home = self.get_player_home()
+        if player_home:
+            center_x = player_home.x + player_home.width // 2
+            center_y = player_home.y + player_home.height // 2
+            return (center_x, center_y)
+        return None
+
+    def get_residential_buildings(self):
+        """
+        獲取所有住宅建築\n
+        \n
+        回傳:\n
+        list: 住宅建築列表\n
+        """
+        residential_buildings = []
+        for building in self.buildings:
+            if hasattr(building, 'building_type') and building.building_type == "house":
+                residential_buildings.append(building)
+        return residential_buildings
 
     def get_statistics(self):
         """

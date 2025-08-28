@@ -45,7 +45,9 @@ class InputController:
         # 功能按鍵映射
         self.action_keys = {
             pygame.K_SPACE: "interact",  # 互動
-            pygame.K_e: "interact",  # 互動（備用）
+            pygame.K_e: "equipment_wheel",  # 裝備圓盤（修改）
+            pygame.K_q: "chop_tree",     # 砍伐樹木（新增）
+            pygame.K_c: "talk",          # 對話（新增）
             pygame.K_i: "inventory",  # 背包
             pygame.K_TAB: "inventory",  # 背包（備用）
             pygame.K_m: "map",  # 地圖
@@ -54,8 +56,13 @@ class InputController:
             pygame.K_f: "fishing",  # 釣魚
             pygame.K_g: "hunting",  # 狩獵
             pygame.K_v: "vehicle",  # 載具
-            pygame.K_c: "crouch",  # 蹲下（預留）
             pygame.K_LSHIFT: "run",  # 跑步（預留）
+            # 裝備選擇快捷鍵（新增）
+            pygame.K_1: "equip_1",  # 槍
+            pygame.K_2: "equip_2",  # 釣竿
+            pygame.K_3: "equip_3",  # 小刀
+            pygame.K_4: "equip_4",  # 車鑰匙
+            pygame.K_5: "equip_5",  # 手電筒
         }
 
         # 滑鼠按鍵映射
@@ -148,16 +155,23 @@ class InputController:
 
     def update(self, dt):
         """
-        更新輸入控制器狀態 - 超高響應版本\n
+        更新輸入控制器狀態 - 超高響應版本，支援奔跑功能\n
         \n
         每幀調用一次，使用最快速的按鍵檢測實現最低延遲控制\n
         目標延遲：不超過 0.03 秒 (約2幀的時間)\n
+        支援 Shift 鍵奔跑功能\n
         \n
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
         # 使用 Pygame 最快的按鍵檢測方法
         current_keys = pygame.key.get_pressed()
+
+        # 檢查奔跑狀態（Shift 鍵）
+        if current_keys[pygame.K_LSHIFT] or current_keys[pygame.K_RSHIFT]:
+            self.player.start_running()
+        else:
+            self.player.stop_running()
 
         # 立即計算新的移動向量（零延遲處理）
         new_movement = [0, 0]
@@ -173,6 +187,21 @@ class InputController:
             new_movement[0] = -1
         if current_keys[pygame.K_d] or current_keys[pygame.K_RIGHT]:
             new_movement[0] += 1
+
+        # 調試輸出：檢查按鍵檢測
+        if hasattr(self, '_debug_counter'):
+            self._debug_counter += 1
+        else:
+            self._debug_counter = 0
+        
+        # 只有當有移動輸入時才輸出調試信息（頻率降低）
+        if (new_movement[0] != 0 or new_movement[1] != 0) and self._debug_counter % 120 == 0:
+            pressed_keys = []
+            if current_keys[pygame.K_w]: pressed_keys.append("W")
+            if current_keys[pygame.K_a]: pressed_keys.append("A")
+            if current_keys[pygame.K_s]: pressed_keys.append("S")
+            if current_keys[pygame.K_d]: pressed_keys.append("D")
+            print(f"輸入控制器調試 - 按鍵: {', '.join(pressed_keys)}, 移動向量: {new_movement}")
 
         # 立即更新玩家移動（移除所有不必要的檢查）
         self.movement_vector = new_movement

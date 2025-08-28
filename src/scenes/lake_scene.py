@@ -595,15 +595,7 @@ class LakeScene(Scene):
         # 繪製物品欄（畫面底下）
         self.player.draw_item_bar(screen)
 
-        # 顯示操作提示
-        if not self.fishing_mode:
-            hint_text = font.render(
-                "E: 收集 | F: 釣魚 | 1-0: 選擇物品欄 | D: 除錯", True, (255, 255, 255)
-            )
-        else:
-            hint_text = font.render("釣魚中，請等待...", True, (255, 255, 0))
-
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
+        # 操作提示已移除
 
     def handle_event(self, event):
         """

@@ -4,6 +4,7 @@ import random
 import math
 from enum import Enum
 from src.systems.npc.profession import Profession, ProfessionData
+from config.settings import NPC_SPEED, NPC_COMMUTE_DISTANCE_THRESHOLD
 
 
 ######################NPC 狀態列舉######################
@@ -63,7 +64,13 @@ class NPC:
         self.x, self.y = initial_position
         self.target_x = self.x
         self.target_y = self.y
-        self.speed = random.uniform(1.0, 2.5)  # 隨機移動速度
+        self.speed = NPC_SPEED  # 使用與玩家相同的移動速度
+        
+        # 載具系統
+        self.has_vehicle = random.choice([True, False])  # 隨機決定是否擁有載具
+        self.in_vehicle = False  # 是否正在使用載具
+        self.commute_distance_threshold = NPC_COMMUTE_DISTANCE_THRESHOLD  # 使用載具的距離閾值
+        self.vehicle_type = "car" if self.has_vehicle else None  # 載具類型
 
         # 工作和住所
         self.workplace = None
@@ -384,7 +391,7 @@ class NPC:
         if self.current_hour < 6 or self.current_hour >= 22:
             if self.state != NPCState.SLEEPING:
                 self.state = NPCState.SLEEPING
-                self._set_target_position(self.home_position)
+                self.go_home()  # 使用載具感知回家
             return
 
         # 休息日邏輯 (星期一到五)
@@ -418,7 +425,7 @@ class NPC:
             # 下班時間
             if self.state not in [NPCState.RESTING, NPCState.IDLE]:
                 self.state = NPCState.RESTING
-                self._set_target_position(self.home_position)
+                self.go_home()  # 使用載具感知回家
 
     def _execute_current_behavior(self, dt):
         """
@@ -577,8 +584,14 @@ class NPC:
         if distance > 5:  # 允許5像素的誤差
             # 正規化方向向量
             if distance > 0:
-                move_x = (dx / distance) * self.speed * dt * 60  # 60 用於幀率補償
-                move_y = (dy / distance) * self.speed * dt * 60
+                # 根據是否使用載具調整移動速度
+                current_speed = self.speed
+                if self.in_vehicle:
+                    from config.settings import VEHICLE_SPEED
+                    current_speed = VEHICLE_SPEED
+                
+                move_x = (dx / distance) * current_speed * dt * 60  # 60 用於幀率補償
+                move_y = (dy / distance) * current_speed * dt * 60
 
                 # 更新位置
                 self.x += move_x
@@ -614,26 +627,37 @@ class NPC:
 
     def _check_collision_with_environment(self):
         """
-        檢查 NPC 是否與環境物件（建築物）發生碰撞\n
+        檢查 NPC 是否與環境物件（建築物、水域）發生碰撞\n
         \n
         回傳:\n
         bool: True 表示發生碰撞，False 表示沒有碰撞\n
         """
-        # 如果沒有建築物管理器，跳過碰撞檢測
-        if not hasattr(self, "buildings") or not self.buildings:
-            return False
-
         # 建立 NPC 的碰撞矩形
         npc_rect = pygame.Rect(
             self.x - self.size, self.y - self.size, self.size * 2, self.size * 2
         )
 
-        # 檢查與所有建築物的碰撞
-        for building in self.buildings:
-            if npc_rect.colliderect(building.rect):
+        # 檢查水域碰撞（NPC 不能進入水體）
+        if hasattr(self, "terrain_system") and self.terrain_system:
+            if self.terrain_system.check_water_collision(self.x, self.y):
                 return True
 
+        # 檢查建築物碰撞
+        if hasattr(self, "buildings") and self.buildings:
+            for building in self.buildings:
+                if npc_rect.colliderect(building.rect):
+                    return True
+
         return False
+
+    def set_terrain_system_reference(self, terrain_system):
+        """
+        設定地形系統參考，用於碰撞檢測\n
+        \n
+        參數:\n
+        terrain_system (TerrainBasedSystem): 地形系統實例\n
+        """
+        self.terrain_system = terrain_system
 
     def _find_alternative_target(self):
         """
@@ -671,6 +695,78 @@ class NPC:
         # 如果找不到替代目標，停在原地
         self.target_x = self.x
         self.target_y = self.y
+
+    def _should_use_vehicle(self, destination_x, destination_y):
+        """
+        判斷是否應該使用載具前往目的地\n
+        \n
+        參數:\n
+        destination_x (float): 目的地 X 座標\n
+        destination_y (float): 目的地 Y 座標\n
+        \n
+        回傳:\n
+        bool: True 表示應該使用載具\n
+        """
+        if not self.has_vehicle:
+            return False
+        
+        # 計算到目的地的距離
+        distance = math.sqrt((destination_x - self.x)**2 + (destination_y - self.y)**2)
+        
+        # 如果距離超過閾值，使用載具
+        return distance > self.commute_distance_threshold
+
+    def start_vehicle_use(self):
+        """
+        開始使用載具\n
+        """
+        if self.has_vehicle and not self.in_vehicle:
+            self.in_vehicle = True
+            print(f"NPC {self.name} 開始使用載具")
+
+    def stop_vehicle_use(self):
+        """
+        停止使用載具\n
+        """
+        if self.in_vehicle:
+            self.in_vehicle = False
+            print(f"NPC {self.name} 停止使用載具")
+
+    def move_to_location(self, destination_x, destination_y):
+        """
+        移動到指定位置，自動決定是否使用載具\n
+        \n
+        參數:\n
+        destination_x (float): 目的地 X 座標\n
+        destination_y (float): 目的地 Y 座標\n
+        """
+        # 根據距離決定是否使用載具
+        if self._should_use_vehicle(destination_x, destination_y):
+            self.start_vehicle_use()
+        else:
+            self.stop_vehicle_use()
+        
+        # 設定目標位置
+        self.target_x = destination_x
+        self.target_y = destination_y
+        self.state = NPCState.MOVING
+
+    def go_to_work(self):
+        """
+        前往工作場所\n
+        """
+        if self.workplace:
+            work_x, work_y = self.workplace
+            self.move_to_location(work_x, work_y)
+            print(f"NPC {self.name} 前往工作場所")
+
+    def go_home(self):
+        """
+        回家\n
+        """
+        home_x, home_y = self.home_position
+        self.move_to_location(home_x, home_y)
+        print(f"NPC {self.name} 回家")
 
     def set_buildings_reference(self, buildings):
         """
@@ -886,10 +982,11 @@ class NPC:
 
     def _go_to_workplace(self):
         """
-        前往工作場所\n
+        前往工作場所 - 自動決定是否使用載具\n
         """
         if self.workplace:
-            self._set_target_position(self.workplace)
+            # 使用新的移動方法，自動處理載具
+            self.go_to_work()
 
     def _wander_around(self):
         """

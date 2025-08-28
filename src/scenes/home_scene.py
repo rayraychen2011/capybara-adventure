@@ -576,11 +576,7 @@ class HomeScene(Scene):
         # 繪製物品欄（畫面底下）
         self.player.draw_item_bar(screen)
 
-        # 顯示操作提示
-        hint_text = font.render(
-            "E: 互動 | 1-0: 選擇物品欄 | 觀察各種展示區域", True, (0, 0, 0)
-        )
-        screen.blit(hint_text, (10, SCREEN_HEIGHT - 100))
+        # 操作提示已移除
 
     def handle_event(self, event):
         """

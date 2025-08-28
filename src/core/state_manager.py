@@ -18,6 +18,7 @@ class GameState(Enum):
     - FISHING: 釣魚小遊戲進行中，特殊的互動模式\n
     - HUNTING: 狩獵模式，使用槍械狩獵動物\n
     - DRIVING: 駕駛載具中，改變移動方式和速度\n
+    - HOME: 玩家住宅室內場景\n
     - QUIT: 準備退出遊戲，進行清理工作\n
     """
     MENU = "menu"
@@ -28,6 +29,7 @@ class GameState(Enum):
     FISHING = "fishing"
     HUNTING = "hunting"
     DRIVING = "driving"
+    HOME = "home"
     QUIT = "quit"
 
 ######################狀態管理器######################
