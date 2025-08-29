@@ -81,7 +81,7 @@ class AnimalData:
     ANIMAL_PROPERTIES = {
         # 稀有動物（30元）
         AnimalType.RABBIT: {
-            "size": 8,
+            "size": 16,
             "speed": 4.0,
             "health": 50,
             "rarity": RarityLevel.RARE,
@@ -147,7 +147,7 @@ class AnimalData:
         # 超稀有動物（50元）
         AnimalType.MOUNTAIN_LION: {
             "size": 14,
-            "speed": 5.0,
+            "speed": 10.0,
             "health": 100,
             "rarity": RarityLevel.SUPER_RARE,
             "behavior": BehaviorType.TERRITORIAL,
@@ -167,7 +167,7 @@ class AnimalData:
         },
         AnimalType.BLACK_PANTHER: {
             "size": 13,
-            "speed": 5.0,
+            "speed": 10.0,
             "health": 100,
             "rarity": RarityLevel.SUPER_RARE,
             "behavior": BehaviorType.TERRITORIAL,
@@ -189,7 +189,7 @@ class AnimalData:
         # 傳奇動物（100元）
         AnimalType.BEAR: {
             "size": 18,
-            "speed": 2.5,
+            "speed": 5.0,
             "health": 300,
             "rarity": RarityLevel.LEGENDARY,
             "behavior": BehaviorType.TERRITORIAL,

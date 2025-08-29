@@ -56,6 +56,7 @@ class InputController:
             pygame.K_v: "vehicle",       # 載具
             pygame.K_LSHIFT: "run",      # 跑步（預留）
             pygame.K_r: "reload",        # 重新裝彈
+            pygame.K_l: "toggle_fire_mode",  # 切換開火功能
             # 武器選擇快捷鍵（新的武器系統）
             pygame.K_1: "weapon_gun",    # 槍（武器1）
             pygame.K_2: "weapon_unarmed", # 空手（武器2）

@@ -708,7 +708,12 @@ class NPC:
         
         # 否則使用正常移動
         self.move_to_location(work_x, work_y)
-        print(f"NPC {self.name} 前往工作場所")
+        # 大幅減少NPC工作輸出：每200次行動才輸出一次
+        if not hasattr(self, '_work_debug_counter'):
+            self._work_debug_counter = 0
+        self._work_debug_counter += 1
+        if self._work_debug_counter % 200 == 0:
+            print(f"NPC {self.name} 前往工作場所 (第{self._work_debug_counter}次)")
 
     def _try_train_commute(self, dest_x, dest_y):
         """

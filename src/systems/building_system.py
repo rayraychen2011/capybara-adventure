@@ -34,14 +34,14 @@ class Building:
         # 字體管理器
         self.font_manager = FontManager()
 
-        # 根據建築類型設定屬性
-        self._setup_building_properties()
-
-        # 建築狀態
+        # 建築狀態 - 先初始化預設值
         self.is_open = True
         self.staff_count = 0
         self.customers = []
         self.services = []
+
+        # 根據建築類型設定屬性（會覆蓋上面的預設值）
+        self._setup_building_properties()
 
         # 互動相關
         self.interaction_points = []
@@ -122,17 +122,14 @@ class Building:
             self.services = ["電力供應"]
             self.staff_count = 30
 
-        elif self.building_type == "park":
-            self.name = "公園"
-            self.color = (50, 205, 50)  # 綠色
-            self.services = ["休閒娛樂"]
-            self.staff_count = 3
-
         elif self.building_type == "clothing_store":
             self.name = "服裝店"
             self.color = (255, 20, 147)  # 粉色
             self.services = ["買衣服", "換裝"]
             self.staff_count = 3
+            # 服裝店專用屬性
+            self.available_outfits = []
+            self._setup_clothing_store_outfits()
 
         elif self.building_type == "office_building":
             self.name = "辦公大樓"
@@ -204,9 +201,9 @@ class Building:
         if not self.is_open:
             return {"success": False, "message": f"{self.name}已關閉"}
 
-        # 服裝店特殊互動
-        if self.building_type == "clothing_store":
-            return self._handle_clothing_store_interaction(player)
+        # 檢查是否為商店建築，如果是則開啟商店
+        if self.building_type in ["convenience_store", "clothing_store", "hospital", "gun_shop"]:
+            return self._handle_shop_interaction(player)
         
         # 其他建築的通用互動
         return {
@@ -214,6 +211,24 @@ class Building:
             "building": self,
             "services": self.services,
             "message": f"歡迎來到{self.name}！",
+        }
+
+    def _handle_shop_interaction(self, player):
+        """
+        處理商店互動\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        \n
+        回傳:\n
+        dict: 互動結果\n
+        """
+        return {
+            "success": True,
+            "action": "open_shop",
+            "building": self,
+            "building_type": self.building_type,
+            "message": f"歡迎來到{self.name}！"
         }
 
     def _handle_clothing_store_interaction(self, player):
@@ -876,10 +891,16 @@ class GridBuildingManager:
     - 建築之間必須保有通行間隙\n
     """
 
-    def __init__(self):
+    def __init__(self, terrain_system=None):
         """
         初始化網格建築管理器\n
+        \n
+        參數:\n
+        terrain_system (TerrainBasedSystem): 地形系統參考（用於地形感知的建築放置）\n
         """
+        # 地形系統參考
+        self.terrain_system = terrain_system
+        
         # 建築物列表
         self.buildings = []
         self.buildings_by_type = {}
@@ -932,6 +953,45 @@ class GridBuildingManager:
         max_x = min_x + GRID_SIZE
         max_y = min_y + GRID_SIZE
         return (min_x, min_y, max_x, max_y)
+
+    def get_terrain_type_at_position(self, x, y):
+        """
+        獲取指定位置的地形類型\n
+        \n
+        參數:\n
+        x (int): 世界座標X\n
+        y (int): 世界座標Y\n
+        \n
+        回傳:\n
+        int: 地形類型代碼，如果無法獲取則回傳None\n
+        """
+        if not self.terrain_system:
+            return None
+        
+        # 將世界座標轉換為地形網格座標
+        tile_x = int(x // self.terrain_system.tile_size)
+        tile_y = int(y // self.terrain_system.tile_size)
+        
+        # 檢查座標是否在地圖範圍內
+        if (0 <= tile_x < self.terrain_system.map_width and 
+            0 <= tile_y < self.terrain_system.map_height):
+            return self.terrain_system.map_data[tile_y][tile_x]
+        
+        return None
+
+    def is_agricultural_area(self, x, y):
+        """
+        檢查指定位置是否為農地區域\n
+        \n
+        參數:\n
+        x (int): 世界座標X\n
+        y (int): 世界座標Y\n
+        \n
+        回傳:\n
+        bool: 是否為農地區域（地形代碼8）\n
+        """
+        terrain_type = self.get_terrain_type_at_position(x, y)
+        return terrain_type == 8  # 農地地形代碼
 
     def can_place_building(self, grid_x, grid_y, building_type, building_width, building_height):
         """
@@ -1190,25 +1250,40 @@ class GridBuildingManager:
 
     def _create_commercial_buildings(self, start_grid_x, start_grid_y, end_grid_x, end_grid_y):
         """
-        創建商業建築\n
+        創建商業建築（帶地形感知）\n
         """
-        # 要創建的商業建築類型和數量
-        commercial_types = [
+        # 非農地區域的商業建築類型和數量
+        non_agricultural_types = [
             ("hospital", HOSPITAL_COUNT),
             ("gun_shop", GUN_SHOP_COUNT),
-            ("convenience_store", CONVENIENCE_STORE_COUNT),
+            ("convenience_store", CONVENIENCE_STORE_COUNT - 2),  # 減少2個給農地區域
+            ("clothing_store", CLOTHING_STORE_COUNT + 1),  # 增加1個原漫畫主題商城位置
             ("church", CHURCH_COUNT),
             ("market", 1),
             ("power_plant", 1),
         ]
+        
+        # 農地區域專用的建築類型（只有便利商店）
+        agricultural_types = [
+            ("convenience_store", 2),  # 農地區域的便利商店
+        ]
 
-        for building_type, count in commercial_types:
+        # 先處理非農地區域的建築
+        print("開始創建非農地區域的商業建築...")
+        for building_type, count in non_agricultural_types:
             created = 0
             
             for grid_y in range(start_grid_y, end_grid_y):
                 for grid_x in range(start_grid_x, end_grid_x):
                     if created >= count:
                         break
+
+                    # 檢查網格中心是否為農地區域，如果是則跳過
+                    grid_center_x = grid_x * GRID_SIZE + GRID_SIZE // 2
+                    grid_center_y = grid_y * GRID_SIZE + GRID_SIZE // 2
+                    
+                    if self.is_agricultural_area(grid_center_x, grid_center_y):
+                        continue  # 跳過農地區域
 
                     # 商業建築尺寸：長寬至少為玩家的7倍（調整為更合理的尺寸）
                     if building_type == "hospital":
@@ -1239,7 +1314,40 @@ class GridBuildingManager:
                 if created >= count:
                     break
 
-            print(f"創建了 {created} 座 {building_type} 建築")
+            print(f"創建了 {created} 座 {building_type} 建築（非農地區域）")
+
+        # 再處理農地區域的建築
+        print("開始創建農地區域的商業建築...")
+        for building_type, count in agricultural_types:
+            created = 0
+            
+            for grid_y in range(start_grid_y, end_grid_y):
+                for grid_x in range(start_grid_x, end_grid_x):
+                    if created >= count:
+                        break
+
+                    # 檢查網格中心是否為農地區域，如果不是則跳過
+                    grid_center_x = grid_x * GRID_SIZE + GRID_SIZE // 2
+                    grid_center_y = grid_y * GRID_SIZE + GRID_SIZE // 2
+                    
+                    if not self.is_agricultural_area(grid_center_x, grid_center_y):
+                        continue  # 只在農地區域放置
+
+                    # 農地區域的建築尺寸
+                    width = random.randint(COMMERCIAL_MIN_SIZE, COMMERCIAL_MIN_SIZE + 20)
+                    height = random.randint(COMMERCIAL_MIN_SIZE, COMMERCIAL_MIN_SIZE + 15)
+
+                    # 創建便利商店
+                    building = Building(building_type, (0, 0), (width, height))
+
+                    # 嘗試放置在網格中
+                    if self.place_building(building, grid_x, grid_y, "commercial"):
+                        created += 1
+
+                if created >= count:
+                    break
+
+            print(f"創建了 {created} 座 {building_type} 建築（農地區域）")
 
     def _add_building(self, building):
         """

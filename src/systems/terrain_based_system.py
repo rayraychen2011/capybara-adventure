@@ -69,10 +69,12 @@ class TerrainBasedSystem:
         self.forest_animals = []
         self.water_animals = []
         
-        # 建築類型優先級 (商業區) - 依據新需求優化建築類型
+        # 建築類型優先級 (商業區) - 根據用戶需求調整
         self.commercial_priority = [
-            "convenience_store", "clothing_store", "gun_shop", "church", 
-            "office_building", "hospital", "park", "comic_theme_store"  # 新增漫畫主題服裝店
+            "gun_shop",           # 槍械店
+            "clothing_store",     # 服裝店  
+            "convenience_store",  # 便利商店
+            "hospital"           # 醫院
         ]
         
         # 小島周圍商業區特殊配置 - 根據用戶需求設定
@@ -324,81 +326,86 @@ class TerrainBasedSystem:
         
         print(f"找到 {len(commercial_positions)} 個商業區格子")
         
-        # 計算建築尺寸 (每格4個建築，2x2排列)
-        building_size_x = self.tile_size // 2 - 2
-        building_size_y = self.tile_size // 2 - 2
+        # 清除所有舊的商業建築
+        print("清除舊的商業區建築...")
+        self.commercial_buildings.clear()
         
-        # 找到小島的位置（CSV第50行第70列，轉換為0索引是第49行第69列）
-        station3_row = 49
-        station3_col = 69
+        # 計算統一建築尺寸 (每格1個商店，占滿整格)
+        building_size_x = self.tile_size - 4  # 統一大小，留2像素邊距
+        building_size_y = self.tile_size - 4
         
-        # 定義小島周圍的商業區範圍
-        station3_commercial_positions = []
-        for grid_x, grid_y in commercial_positions:
-            # 檢查是否在小島附近（行49-51，列71-74範圍內）
-            if (grid_y >= station3_row - 1 and grid_y <= station3_row + 1 and
-                grid_x >= station3_col + 2 and grid_x <= station3_col + 5):
-                station3_commercial_positions.append((grid_x, grid_y))
+        print(f"新商店統一尺寸: {building_size_x}x{building_size_y}")
         
-        # 為一般商業區和小島周圍商業區分別分配建築
-        general_commercial_count = len(commercial_positions) - len(station3_commercial_positions)
-        station3_commercial_count = len(station3_commercial_positions)
-
-        print(f"小島周圍商業區: {station3_commercial_count} 格")
-        print(f"一般商業區: {general_commercial_count} 格")
-
-        # 根據優先級分配建築類型（帶重複檢測）
-        general_assignments = self._assign_commercial_buildings_with_duplicate_check(general_commercial_count * 4)
-        station3_assignments = self._assign_station3_commercial_buildings(station3_commercial_count * 4)
-
-        building_index = 0
-        station3_building_index = 0
-        commercial_count = 0
+        # 按地形類型分配商店類型（地形感知分配）
+        total_positions = len(commercial_positions)
+        shop_assignments = []
         
-        for grid_x, grid_y in commercial_positions:
+        # 計算各商店類型的分配數量
+        shop_counts = {
+            "gun_shop": 0,
+            "clothing_store": 0,
+            "convenience_store": 0,
+            "comic_theme_store": 0,
+            "hospital": 0
+        }
+        
+        # 為每個商業區位置分配商店類型
+        for i, (grid_x, grid_y) in enumerate(commercial_positions):
+            # 檢查是否在農地附近（距離農地2格以內的商業區只放便利商店）
+            is_near_farm = self._is_near_farmland(grid_x, grid_y, radius=2)
+            
+            if is_near_farm:
+                # 農地附近只放便利商店
+                shop_type = "convenience_store"
+                shop_counts["convenience_store"] += 1
+                print(f"  農地附近位置 ({grid_x}, {grid_y}) 分配: 便利商店")
+            else:
+                # 非農地區域按照設定比例分配
+                adjusted_index = i % len(self.commercial_priority)
+                if adjusted_index == 2 and shop_counts["convenience_store"] >= 5:  # 限制便利商店數量
+                    # 如果便利商店數量已達上限，改放服裝店
+                    shop_type = "clothing_store"
+                else:
+                    shop_type = self.commercial_priority[adjusted_index]
+                
+                shop_counts[shop_type] += 1
+                print(f"  一般商業區位置 ({grid_x}, {grid_y}) 分配: {shop_type}")
+            
+            shop_assignments.append(shop_type)
+        
+        print(f"分配完成：{shop_counts}")
+        print(f"總共分配 {total_positions} 個商店位置")
+        
+        # 創建新的統一商店
+        shop_count = 0
+        for i, (grid_x, grid_y) in enumerate(commercial_positions):
             # 計算格子的世界座標
             tile_world_x = grid_x * self.tile_size
             tile_world_y = grid_y * self.tile_size
             
-            # 判斷是否為小島周圍的商業區
-            is_station3_area = (grid_x, grid_y) in station3_commercial_positions
+            # 計算建築位置（居中放置，留邊距）
+            pos_x = tile_world_x + 2
+            pos_y = tile_world_y + 2
             
-            # 在格子內放置4個建築 (2x2 排列)
-            for building_y in range(2):
-                for building_x in range(2):
-                    if is_station3_area:
-                        if station3_building_index >= len(station3_assignments):
-                            break
-                        building_type = station3_assignments[station3_building_index]
-                        station3_building_index += 1
-                    else:
-                        if building_index >= len(general_assignments):
-                            break
-                        building_type = general_assignments[building_index]
-                        building_index += 1
-                        
-                    # 計算建築位置
-                    pos_x = tile_world_x + building_x * (self.tile_size // 2) + 1
-                    pos_y = tile_world_y + building_y * (self.tile_size // 2) + 1
-                    
-                    # 創建對應類型的建築
-                    building = self._create_commercial_building(
-                        building_type, 
-                        (pos_x, pos_y), 
-                        (building_size_x, building_size_y)
-                    )
-                    
-                    if building:
-                        building.terrain_grid = (grid_x, grid_y)
-                        # 為小島周圍的建築添加特殊標記
-                        if is_station3_area:
-                            building.station3_area = True
-                        self.buildings.append(building)
-                        self.commercial_buildings.append(building)
-                        commercial_count += 1
+            # 獲取商店類型
+            shop_type = shop_assignments[i]
+            
+            # 創建統一大小的商店建築
+            building = self._create_commercial_building(
+                shop_type, 
+                (pos_x, pos_y), 
+                (building_size_x, building_size_y)
+            )
+            
+            if building:
+                building.terrain_grid = (grid_x, grid_y)
+                self.buildings.append(building)  # 添加到總建築列表
+                self.commercial_buildings.append(building)
+                shop_count += 1
+                
+                print(f"  創建商店 {shop_count}: {building.name} 於 ({pos_x}, {pos_y})")
         
-        print(f"商業區設置完成，共創建 {commercial_count} 棟商業建築")
-        print(f"小島周圍商業區建築: {station3_building_index} 棟")
+        print(f"商業區設置完成，總共創建了 {shop_count} 個統一大小的商店")
 
     def _setup_farm_areas(self):
         """
@@ -628,14 +635,11 @@ class TerrainBasedSystem:
             "church": max(1, total_slots // 20),              # 教堂
             "office_building": max(1, total_slots // 6),      # 辦公大樓
             "hospital": max(1, total_slots // 15),            # 醫院
-            "park": max(1, total_slots // 8),                 # 公園
-            "comic_theme_store": 0                            # 漫畫主題服裝店（用於重複替換）
+            "park": max(1, total_slots // 8)                  # 公園
         }
         
         # 按優先級順序分配
         for building_type in self.commercial_priority:
-            if building_type == "comic_theme_store":
-                continue  # 跳過漫畫主題服裝店，它只用於替換重複建築
             quota = building_quotas.get(building_type, 0)
             for _ in range(min(quota, total_slots - len(assignments))):
                 assignments.append(building_type)
@@ -676,11 +680,11 @@ class TerrainBasedSystem:
             
             for building_type in tile_buildings:
                 if building_counts[building_type] > 1 and not replacement_made:
-                    # 第一個重複建築改為漫畫主題服裝店
-                    processed_tile.append("comic_theme_store")
+                    # 第一個重複建築改為服裝店
+                    processed_tile.append("clothing_store")
                     building_counts[building_type] -= 1
                     replacement_made = True
-                    print(f"檢測到重複建築 {building_type}，將其改為漫畫主題服裝店")
+                    print(f"檢測到重複建築 {building_type}，將其改為服裝店")
                 else:
                     processed_tile.append(building_type)
             
@@ -722,6 +726,32 @@ class TerrainBasedSystem:
         
         return assignments
 
+    def _is_near_farmland(self, grid_x, grid_y, radius=2):
+        """
+        檢查指定網格位置是否接近農地\n
+        \n
+        參數:\n
+        grid_x (int): 網格X座標\n
+        grid_y (int): 網格Y座標\n
+        radius (int): 檢查半徑（網格距離）\n
+        \n
+        回傳:\n
+        bool: 是否接近農地（地形代碼8）\n
+        """
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                check_x = grid_x + dx
+                check_y = grid_y + dy
+                
+                # 檢查是否在地圖範圍內
+                if (0 <= check_x < self.map_width and 
+                    0 <= check_y < self.map_height):
+                    # 檢查是否為農地
+                    if self.map_data[check_y][check_x] == 8:  # 農地地形代碼
+                        return True
+        
+        return False
+
     def _create_commercial_building(self, building_type, position, size):
         """
         創建商業建築\n
@@ -744,13 +774,6 @@ class TerrainBasedSystem:
             factory.name = "工廠"
             factory.color = (105, 105, 105)  # 深灰色工廠
             return factory
-        elif building_type == "comic_theme_store":
-            # 創建漫畫主題服裝店
-            comic_store = Building(building_type, position, size)
-            comic_store.name = "漫畫主題服裝店"
-            comic_store.color = (255, 20, 147)  # 深粉紅色
-            comic_store.description = "售賣動漫角色服裝和周邊商品"
-            return comic_store
         else:
             return Building(building_type, position, size)
 

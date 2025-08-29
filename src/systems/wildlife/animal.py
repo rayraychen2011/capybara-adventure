@@ -523,23 +523,54 @@ class Animal:
 
     def _fleeing_behavior(self, dt, player_position):
         """
-        逃跑行為 - 快速遠離玩家\n
+        逃跑行為 - 快速遠離玩家或威脅\n
         \n
         參數:\n
         dt (float): 時間間隔\n
         player_position (tuple): 玩家位置\n
         """
-        self.current_speed = self.max_speed * 1.3  # 加速逃跑
+        # 根據稀有度調整逃跑速度
+        if self.rarity == RarityLevel.RARE:
+            # 稀有動物逃跑時速度更快，更加驚恐
+            self.current_speed = self.flee_speed * 1.5  # 比平常快50%
+            
+            # 受傷的稀有動物逃跑時更加不穩定
+            if self.is_injured:
+                # 隨機改變方向，模擬驚恐中的亂竄
+                if random.random() < 0.15:  # 15% 機率突然改變方向
+                    self._set_flee_target(player_position)
+                    # 減少頻繁調試輸出
+                    if not hasattr(self, '_flee_debug_counter'):
+                        self._flee_debug_counter = 0
+                    self._flee_debug_counter += 1
+                    if self._flee_debug_counter % 20 == 0:  # 每20次才輸出一次
+                        print(f"💨 {self.animal_type.value} 驚恐地改變逃跑方向！(第{self._flee_debug_counter}次)")
+        else:
+            # 其他動物正常逃跑速度
+            self.current_speed = self.max_speed * 1.3  # 加速逃跑
 
-        # 持續更新逃跑方向
-        if random.random() < 0.1:  # 10% 機率調整逃跑方向
+        # 持續更新逃跑方向（遠離玩家）
+        if random.random() < 0.08:  # 8% 機率調整逃跑方向
             self._set_flee_target(player_position)
 
         # 逃跑時間結束或到達安全距離
         distance = self._calculate_distance_to_player(player_position)
-        if self.flee_timer <= 0 or distance > self.detection_range * 2:
-            self.state = AnimalState.HIDING
-            self.wander_timer = random.uniform(3.0, 6.0)  # 躲藏一段時間
+        safe_distance = self.detection_range * 3  # 安全距離是檢測範圍的3倍
+        
+        # 稀有動物需要跑得更遠才覺得安全
+        if self.rarity == RarityLevel.RARE:
+            safe_distance = self.detection_range * 4
+        
+        if self.flee_timer <= 0 or distance > safe_distance:
+            if self.rarity == RarityLevel.RARE and self.is_injured:
+                # 受傷的稀有動物會先躲藏一段時間
+                self.state = AnimalState.HIDING
+                self.wander_timer = random.uniform(8.0, 15.0)  # 躲藏8-15秒
+                print(f"🫥 {self.animal_type.value} 躲藏起來恢復驚嚇")
+            else:
+                # 其他動物直接進入躲藏或回到正常狀態
+                self.state = AnimalState.HIDING
+                self.wander_timer = random.uniform(3.0, 6.0)  # 躲藏一段時間
 
     def _roaring_behavior(self, dt):
         """
@@ -594,17 +625,34 @@ class Animal:
 
     def _hiding_behavior(self, dt):
         """
-        躲藏行為 - 保持靜止\n
+        躲藏行為 - 保持靜止並逐漸恢復\n
         \n
         參數:\n
         dt (float): 時間間隔\n
         """
         self.current_speed = 0  # 完全停止
+        
+        # 躲藏期間稀有動物會逐漸恢復冷靜
+        if self.rarity == RarityLevel.RARE and self.is_injured:
+            # 受傷的稀有動物在躲藏時會漸漸恢復一些血量（代表休息恢復）
+            if random.random() < 0.05:  # 5% 機率每幀恢復一點血量
+                self.health = min(self.max_health, self.health + 1)
+                if self.health >= self.max_health * 0.8:  # 恢復到80%血量時
+                    self.is_injured = False
+                    print(f"💚 {self.animal_type.value} 在躲藏中逐漸恢復了體力")
 
         # 躲藏時間結束
         if self.wander_timer <= 0:
-            self.state = AnimalState.WANDERING
-            self._set_wander_target()
+            if self.rarity == RarityLevel.RARE and self.is_injured:
+                # 受傷的稀有動物恢復後會更加小心謹慎
+                self.state = AnimalState.ALERT
+                self.alert_timer = 5.0  # 長時間保持警戒
+                self.detection_range = self.detection_range * 1.5  # 提高警覺範圍
+                print(f"👀 {self.animal_type.value} 變得更加警覺了")
+            else:
+                # 其他動物直接回到漫遊狀態
+                self.state = AnimalState.WANDERING
+                self._set_wander_target()
 
     def _set_wander_target(self):
         """
@@ -795,31 +843,62 @@ class Animal:
             return
 
         self.health -= damage
-        print(f"{self.animal_type.value} 受到 {damage} 點傷害")
+        self.is_injured = True  # 標記為受傷狀態
+        
+        # 減少受傷調試輸出頻率
+        if not hasattr(self, '_damage_debug_counter'):
+            self._damage_debug_counter = 0
+        self._damage_debug_counter += 1
+        # 每5次受傷才輸出一次
+        if self._damage_debug_counter % 5 == 0:
+            print(f"{self.animal_type.value} 受到第{self._damage_debug_counter}次攻擊，本次 {damage} 點傷害，血量剩餘 {self.health}")
+        elif self.health <= 0:
+            # 死亡時一定要輸出
+            print(f"{self.animal_type.value} 受到 {damage} 點傷害並死亡")
 
         # 受到攻擊時的反應 - 根據稀有度決定
         if self.health > 0:
             if self.rarity == RarityLevel.RARE:
-                # 稀有動物：受攻擊時驚恐逃跑
+                # 稀有動物：一被擊中就驚恐逃跑
                 self.state = AnimalState.FLEEING
-                self.flee_timer = 8.0  # 較長的逃跑時間
-                if attacker:
+                self.flee_timer = 10.0  # 更長的逃跑時間
+                self.current_speed = self.flee_speed  # 使用逃跑速度
+                print(f"💨 {self.animal_type.value} 被擊中後驚恐逃跑！")
+                
+                # 設定逃跑目標
+                if attacker and hasattr(attacker, 'get_center_position'):
                     self._set_flee_target(attacker.get_center_position())
+                elif attacker and hasattr(attacker, 'get_position'):
+                    self._set_flee_target(attacker.get_position())
+                else:
+                    # 如果攻擊者位置不明，隨機選擇逃跑方向
+                    import random
+                    angle = random.uniform(0, 2 * math.pi)
+                    flee_x = self.x + math.cos(angle) * 200
+                    flee_y = self.y + math.sin(angle) * 200
+                    self.target_x = flee_x
+                    self.target_y = flee_y
             
             elif self.rarity == RarityLevel.SUPER_RARE:
                 # 超稀有動物：被攻擊後會反擊或逃跑
                 if self.threat_level in [ThreatLevel.HIGH, ThreatLevel.EXTREME]:
                     self.state = AnimalState.ATTACKING
+                    print(f"⚔️ {self.animal_type.value} 被激怒，開始反擊！")
                 else:
                     self.state = AnimalState.FLEEING
-                    self.flee_timer = 6.0
-                    if attacker:
+                    self.flee_timer = 8.0
+                    self.current_speed = self.flee_speed
+                    print(f"💨 {self.animal_type.value} 被擊中後快速逃離！")
+                    
+                    if attacker and hasattr(attacker, 'get_center_position'):
                         self._set_flee_target(attacker.get_center_position())
+                    elif attacker and hasattr(attacker, 'get_position'):
+                        self._set_flee_target(attacker.get_position())
             
             elif self.rarity == RarityLevel.LEGENDARY:
                 # 傳奇動物：被攻擊後變得更加兇猛
                 self.state = AnimalState.ATTACKING
-                print(f"{self.animal_type.value} 被激怒了！")
+                print(f"🔥 {self.animal_type.value} 被激怒了，變得極度危險！")
             
             else:
                 # 舊版邏輯（向後相容）
@@ -827,8 +906,11 @@ class Animal:
                     # 無害動物受攻擊時驚恐逃跑
                     self.state = AnimalState.FLEEING
                     self.flee_timer = 8.0  # 較長的逃跑時間
-                    if attacker:
+                    self.current_speed = self.flee_speed
+                    if attacker and hasattr(attacker, 'get_center_position'):
                         self._set_flee_target(attacker.get_center_position())
+                    elif attacker and hasattr(attacker, 'get_position'):
+                        self._set_flee_target(attacker.get_position())
                 elif self.behavior_type in [
                     BehaviorType.DEFENSIVE,
                     BehaviorType.TERRITORIAL,
@@ -971,14 +1053,21 @@ class Animal:
                 screen, (255, 255, 0), (draw_x, draw_y), effect_radius, 3
             )
         elif self.state == AnimalState.FLEEING:
-            # 逃跑狀態：閃爍效果
-            if int(pygame.time.get_ticks() / 200) % 2:  # 每200ms閃爍一次
+            # 逃跑狀態：閃爍效果，稀有動物閃爍更快
+            flash_interval = 150 if self.rarity == RarityLevel.RARE else 200
+            if int(pygame.time.get_ticks() / flash_interval) % 2:  
+                # 受傷的稀有動物用紅白閃爍表示驚恐
+                if self.rarity == RarityLevel.RARE and self.is_injured:
+                    flash_color = (255, 100, 100)  # 淡紅色
+                else:
+                    flash_color = (255, 255, 255)  # 白色
+                
                 pygame.draw.circle(
                     screen,
-                    (255, 255, 255),
+                    flash_color,
                     (draw_x, draw_y),
-                    effect_radius + 3,
-                    2,
+                    effect_radius + 5,
+                    3,
                 )
         elif self.state == AnimalState.ATTACKING:
             # 攻擊狀態：紅色邊框
@@ -1019,8 +1108,8 @@ class Animal:
                 screen, (0, 255, 0), (draw_x + marker_offset_x, draw_y - marker_offset_y), 4
             )
 
-        # 健康條 (如果受傷)
-        if self.health < self.max_health:
+        # 健康條 (如果受傷或處於特殊狀態)
+        if self.health < self.max_health or self.state == AnimalState.FLEEING:
             self._draw_health_bar(screen, draw_x, draw_y)
 
     def _draw_vision_cone(self, screen, draw_x, draw_y):
@@ -1059,7 +1148,7 @@ class Animal:
 
     def _draw_health_bar(self, screen, draw_x, draw_y):
         """
-        繪製健康條\n
+        繪製健康條和狀態指示器\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -1074,17 +1163,35 @@ class Animal:
             bar_width = self.size * 2
             bar_y_offset = self.size + 12
             
-        bar_height = 4
+        bar_height = 5 if self.rarity == RarityLevel.RARE else 4  # 稀有動物的健康條稍厚
         bar_x = draw_x - bar_width // 2
         bar_y = draw_y - bar_y_offset
 
         # 背景條 (紅色)
         pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
 
-        # 健康條 (綠色)
+        # 健康條顏色根據動物狀態調整
         health_ratio = self.health / self.max_health
         health_width = int(bar_width * health_ratio)
-        pygame.draw.rect(screen, (0, 255, 0), (bar_x, bar_y, health_width, bar_height))
+        
+        if self.state == AnimalState.FLEEING and self.rarity == RarityLevel.RARE:
+            # 逃跑中的稀有動物用橙色健康條
+            health_color = (255, 165, 0)
+        elif health_ratio > 0.7:
+            health_color = (0, 255, 0)  # 綠色
+        elif health_ratio > 0.3:
+            health_color = (255, 255, 0)  # 黃色
+        else:
+            health_color = (255, 100, 100)  # 淡紅色
+            
+        pygame.draw.rect(screen, health_color, (bar_x, bar_y, health_width, bar_height))
+        
+        # 稀有動物額外顯示驚恐狀態指示器
+        if self.rarity == RarityLevel.RARE and self.state == AnimalState.FLEEING:
+            # 在健康條上方顯示小驚嘆號
+            status_y = bar_y - 10
+            pygame.draw.circle(screen, (255, 200, 0), (draw_x, status_y), 3)
+            pygame.draw.circle(screen, (255, 255, 255), (draw_x, status_y), 1)
 
     def draw_info(self, screen, font):
         """

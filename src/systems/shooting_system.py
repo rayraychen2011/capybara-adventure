@@ -216,7 +216,9 @@ class ShootingSystem:
         self.last_shot_time = time.time()
         self.shots_fired += 1
         
-        print(f"🔫 BB槍射擊! 目標: ({target_pos[0]:.0f}, {target_pos[1]:.0f})")
+        # 減少射擊調試輸出頻率：每50發才輸出一次
+        if self.shots_fired % 50 == 0:
+            print(f"🔫 BB槍射擊! 已發射 {self.shots_fired} 發，目標: ({target_pos[0]:.0f}, {target_pos[1]:.0f})")
         return True
 
     def start_auto_fire(self):
@@ -279,9 +281,9 @@ class ShootingSystem:
         for bullet in self.bullets[:]:  # 使用切片複製避免修改列表時出錯
             bullet.update(dt)
             
-            # 子彈更新調試
-            if len(self.bullets) <= 3:  # 只在子彈數量少時顯示，避免刷屏
-                print(f"🔹 子彈更新: 位置 ({bullet.x:.1f}, {bullet.y:.1f}), 存活 {bullet.life_time:.2f}s, 狀態: {'活躍' if bullet.is_active else '失效'}")
+            # 大幅減少子彈調試輸出：只在有異常時才輸出
+            # if len(self.bullets) <= 3:  # 只在子彈數量少時顯示，避免刷屏
+            #     print(f"🔹 子彈更新: 位置 ({bullet.x:.1f}, {bullet.y:.1f}), 存活 {bullet.life_time:.2f}s, 狀態: {'活躍' if bullet.is_active else '失效'}")
             
             if not bullet.is_active:
                 self.bullets.remove(bullet)
@@ -321,7 +323,9 @@ class ShootingSystem:
 
                     self.bullets.remove(bullet)
                     self.hits_count += 1
-                    print(f"💥 命中目標! 傷害: {bullet.damage}")
+                    # 減少命中調試輸出：每10次命中才輸出一次
+                    if self.hits_count % 10 == 0:
+                        print(f"💥 命中目標! 累計命中 {self.hits_count} 次，本次傷害: {bullet.damage}")
                     break
 
         return hit_targets

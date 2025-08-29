@@ -12,24 +12,21 @@ class TownUIManager:
     \n
     負責：\n
     1. HUD 顯示（金錢、物品欄等）\n
-    2. 小地圖顯示\n
-    3. NPC 資訊面板\n
-    4. 提示訊息\n
-    5. 控制說明\n
+    2. NPC 資訊面板\n
+    3. 提示訊息\n
+    4. 控制說明\n
     """
 
-    def __init__(self, player, minimap_ui, npc_info_ui, terrain_system=None):
+    def __init__(self, player, npc_info_ui, terrain_system=None):
         """
         初始化 UI 管理器\n
         \n
         參數:\n
         player (Player): 玩家物件\n
-        minimap_ui (MinimapUI): 小地圖 UI\n
         npc_info_ui (NPCInfoUI): NPC 資訊 UI\n
         terrain_system (TerrainBasedSystem): 地形系統\n
         """
         self.player = player
-        self.minimap_ui = minimap_ui
         self.npc_info_ui = npc_info_ui
         self.terrain_system = terrain_system
         
@@ -39,7 +36,6 @@ class TownUIManager:
         # UI 狀態
         self.show_npc_info = False
         self.show_controls_hint = True
-        self.show_minimap = True
         
         # 訊息系統
         self.current_message = ""
@@ -77,10 +73,6 @@ class TownUIManager:
         """
         # 繪製玩家 HUD
         self._draw_player_hud(screen)
-        
-        # 繪製小地圖
-        if self.show_minimap:
-            self._draw_minimap(screen, camera_controller)
         
         # 繪製 NPC 資訊面板
         if self.show_npc_info:
@@ -124,42 +116,6 @@ class TownUIManager:
         else:
             item_text = "手持: 無"
         draw_text(screen, item_text, font, self.hud_text_color, 20, 70)
-
-    def _draw_minimap(self, screen, camera_controller):
-        """
-        繪製小地圖\n
-        \n
-        參數:\n
-        screen (Surface): 遊戲螢幕\n
-        camera_controller (TownCameraController): 攝影機控制器\n
-        """
-        # 獲取地形資料
-        terrain_data = None
-        buildings = None
-        if self.terrain_system:
-            terrain_data = self.terrain_system.map_data  # 正確的屬性名稱
-            buildings = self.terrain_system.buildings
-            
-            # 調試：檢查地形資料傳遞
-            if hasattr(self, '_minimap_debug_counter'):
-                self._minimap_debug_counter += 1
-            else:
-                self._minimap_debug_counter = 0
-            
-            if self._minimap_debug_counter % 300 == 0:  # 每5秒輸出一次
-                terrain_status = "有地形資料" if terrain_data else "無地形資料"
-                building_count = len(buildings) if buildings else 0
-                print(f"小地圖調試 - {terrain_status}, 建築數量: {building_count}")
-        
-        # 使用 MinimapUI.draw 方法並傳遞地形資料
-        self.minimap_ui.draw(
-            screen, 
-            self.player.x, 
-            self.player.y, 
-            self.player.facing_direction,
-            buildings=buildings,
-            terrain_data=terrain_data
-        )
 
     def _draw_npc_info(self, screen, npc_manager):
         """
@@ -235,13 +191,6 @@ class TownUIManager:
         self.show_npc_info = not self.show_npc_info
         print(f"NPC 資訊面板: {'開啟' if self.show_npc_info else '關閉'}")
 
-    def toggle_minimap(self):
-        """
-        切換小地圖顯示\n
-        """
-        self.show_minimap = not self.show_minimap
-        print(f"小地圖: {'開啟' if self.show_minimap else '關閉'}")
-
     def toggle_controls_hint(self):
         """
         切換控制提示顯示\n
@@ -251,7 +200,7 @@ class TownUIManager:
 
     def handle_mouse_input(self, event):
         """
-        處理滑鼠輸入（主要是小地圖互動）\n
+        處理滑鼠輸入\n
         \n
         參數:\n
         event (pygame.Event): 滑鼠事件\n
@@ -259,8 +208,7 @@ class TownUIManager:
         回傳:\n
         bool: 是否有處理事件\n
         """
-        if self.show_minimap:
-            return self.minimap_ui.handle_mouse_input(event)
+        # 目前沒有特殊的滑鼠事件需要處理
         return False
 
     def get_debug_info(self):
@@ -272,7 +220,6 @@ class TownUIManager:
         """
         return {
             "show_npc_info": self.show_npc_info,
-            "show_minimap": self.show_minimap,
             "show_controls_hint": self.show_controls_hint,
             "current_message": self.current_message,
             "message_timer": round(self.message_timer, 2) if self.message_timer > 0 else 0

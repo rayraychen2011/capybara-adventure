@@ -1,413 +1,305 @@
-######################載入套件######################
-import pygame
+﻿import pygame
+import os
+from enum import Enum
 from config.settings import *
-from src.utils.font_manager import get_font_manager, FontManager
+from src.utils.font_manager import FontManager
 
 
-######################通用商店介面######################
-class ShopUI:
-    """
-    通用商店介面 - 處理所有類型商店的UI顯示\n
-    \n
-    提供統一的商店界面，包括：\n
-    - 玩家金錢顯示\n
-    - 商品列表顯示\n
-    - 購買按鈕互動\n
-    - 統一的中文界面\n
-    """
+class ShopType(Enum):
+    """商店類型枚舉"""
+    CONVENIENCE_STORE = "便利商店"
+    GUN_STORE = "槍械店" 
+    CLOTHING_STORE = "服裝店"
+    HOSPITAL = "醫院"
+    BOOKSTORE = "書店"
 
+
+class ShopItem:
+    """商品類別"""
+    def __init__(self, item_id, name, price, category, effect=None, effect_value=0, description="", image_path=None):
+        self.item_id = item_id
+        self.name = name
+        self.price = price
+        self.category = category
+        self.effect = effect
+        self.effect_value = effect_value
+        self.description = description
+        self.image_path = image_path
+        self.image = None
+        self.load_image()
+    
+    def load_image(self):
+        """載入商品圖片"""
+        if self.image_path and os.path.exists(self.image_path):
+            try:
+                self.image = pygame.image.load(self.image_path).convert_alpha()
+                # 調整圖片大小以適應商品格子
+                self.image = pygame.transform.scale(self.image, (50, 50))
+                print(f"✅ 成功載入圖片: {self.image_path}")
+            except pygame.error as e:
+                print(f"❌ 載入圖片失敗 {self.image_path}: {e}")
+                self.image = None
+        else:
+            if self.image_path:
+                print(f"⚠️ 圖片檔案不存在: {self.image_path}")
+            self.image = None
+
+
+class ShopData:
+    """商店資料庫"""
+    
+    # 圖片基礎路徑
+    IMAGES_PATH = "assets/images/things/"
+    
+    @staticmethod
+    def get_gun_store_items():
+        return [
+            ShopItem("ak47", "AK47", 5000, "weapon", "weapon", 0, "高穩定,中射程,低射速,高傷害,40發子彈", ShopData.IMAGES_PATH + "AK47.png"),
+            ShopItem("gatling", "加特靈", 4000, "weapon", "weapon", 0, "低穩定,中射程,高射速,低傷害,200發子彈", ShopData.IMAGES_PATH + "加特靈.png"),
+            ShopItem("spas12", "SPAS12", 3000, "weapon", "weapon", 0, "低穩定,低射程,高射速,高傷害,12發散彈(一發散成10個彈片)", ShopData.IMAGES_PATH + "SPAS12.png")
+        ]
+    
+    @staticmethod
+    def get_convenience_store_items():
+        return [
+            ShopItem("cola", "可樂", 50, "health_restore", "health_restore", 50, "生命回復50", ShopData.IMAGES_PATH + "可樂.png"),
+            ShopItem("fries", "薯條", 60, "health_restore", "health_restore", 60, "生命回復60", ShopData.IMAGES_PATH + "薯條.png"),
+            ShopItem("hotdog", "熱狗", 70, "health_restore", "health_restore", 70, "生命回復70", ShopData.IMAGES_PATH + "熱狗.png"),
+            ShopItem("burger", "漢堡", 80, "health_restore", "health_restore", 80, "生命回復80", ShopData.IMAGES_PATH + "漢堡.png")
+        ]
+    
+    @staticmethod
+    def get_clothing_store_items():
+        return [
+            # 原服裝防禦商品
+            ShopItem("banana_suit", "香蕉裝", 100, "defense", "defense", 5, "防禦+5", ShopData.IMAGES_PATH + "香蕉裝.png"),
+            ShopItem("headphones", "耳機", 200, "defense", "defense", 10, "防禦+10", ShopData.IMAGES_PATH + "耳機.png"),
+            ShopItem("hat", "帽帽", 300, "defense", "defense", 15, "防禦+15", ShopData.IMAGES_PATH + "帽帽.png"),
+            ShopItem("hoodie", "帽衣", 400, "defense", "defense", 20, "防禦+20", ShopData.IMAGES_PATH + "帽衣.png"),
+            ShopItem("clothes", "衣服", 500, "defense", "defense", 25, "防禦+25", ShopData.IMAGES_PATH + "衣服.png"),
+            # 原漫畫主題商城血量回復商品（使用現有圖片替代）
+            ShopItem("homer", "HOMER", 800, "health_regen", "health_regen", 4, "每秒血量回復+4", ShopData.IMAGES_PATH + "急救箱.png"),
+            ShopItem("mushroom", "香菇", 600, "health_regen", "health_regen", 3, "每秒血量回復+3", ShopData.IMAGES_PATH + "止痛藥.png"),
+            ShopItem("labubu", "LABUBU", 400, "health_regen", "health_regen", 2, "每秒血量回復+2", ShopData.IMAGES_PATH + "繃帶.png"),
+            ShopItem("clown", "CLOWN", 200, "health_regen", "health_regen", 1, "每秒血量回復+1", ShopData.IMAGES_PATH + "可樂.png")
+        ]
+    
+    @staticmethod
+    def get_hospital_items():
+        return [
+            ShopItem("bandage", "繃帶", 100, "health_restore", "health_restore", 100, "生命回復100", ShopData.IMAGES_PATH + "繃帶.png"),
+            ShopItem("first_aid", "急救包", 200, "health_restore", "health_restore", 200, "生命回復200", ShopData.IMAGES_PATH + "急救箱.png"),
+            ShopItem("painkiller", "止痛藥", 300, "health_restore", "health_restore", 300, "生命回復300", ShopData.IMAGES_PATH + "止痛藥.png")
+        ]
+    
+    @staticmethod
+    def get_bookstore_items():
+        return [
+            ShopItem("cookbook", "食譜書", 150, "knowledge", "skill", 1, "學習烹飪技能", "assets/images/things/漢堡.png"),
+            ShopItem("combat_manual", "戰鬥手冊", 250, "knowledge", "skill", 1, "學習戰鬥技能", "assets/images/things/AK47.png"),
+            ShopItem("survival_guide", "生存指南", 200, "knowledge", "skill", 1, "學習生存技能", "assets/images/things/急救箱.png"),
+            ShopItem("encyclopedia", "百科全書", 500, "knowledge", "skill", 1, "學習所有技能", "assets/images/things/HOMER.png")
+        ]
+
+
+class Shop:
+    """商店類別"""
+    def __init__(self, shop_type, name, items):
+        self.shop_type = shop_type
+        self.name = name
+        self.items = items
+        self.is_open = False
+
+
+class ShopManager:
+    """商店管理器"""
+    
     def __init__(self):
-        """
-        初始化商店UI\n
-        """
-        self.font_manager = get_font_manager()
-        self.is_visible = False
-        self.current_shop = None
-        self.current_items = []
+        self.shops = {
+            ShopType.CONVENIENCE_STORE: Shop(ShopType.CONVENIENCE_STORE, "便利商店", ShopData.get_convenience_store_items()),
+            ShopType.GUN_STORE: Shop(ShopType.GUN_STORE, "槍械店", ShopData.get_gun_store_items()),
+            ShopType.CLOTHING_STORE: Shop(ShopType.CLOTHING_STORE, "服裝店", ShopData.get_clothing_store_items()),
+            ShopType.HOSPITAL: Shop(ShopType.HOSPITAL, "醫院", ShopData.get_hospital_items()),
+            ShopType.BOOKSTORE: Shop(ShopType.BOOKSTORE, "書店", ShopData.get_bookstore_items())
+        }
+        self.current_shop_type = None
+        self.font_manager = FontManager()
         
-        # UI 尺寸設定
-        self.width = 500
-        self.height = 600
-        self.x = (SCREEN_WIDTH - self.width) // 2
-        self.y = (SCREEN_HEIGHT - self.height) // 2
-        
-        # 顏色設定
-        self.bg_color = (50, 50, 50)
-        self.border_color = (255, 255, 255)
-        self.button_color = (70, 130, 180)
-        self.button_hover_color = (100, 149, 237)
-        self.button_disabled_color = (128, 128, 128)
-        
-        # 按鈕列表
-        self.buttons = []
-        self.hovered_button = None
-        
-        print("通用商店UI初始化完成")
-
-    def show(self, shop_name, items, player_money):
-        """
-        顯示商店界面\n
-        \n
-        參數:\n
-        shop_name (str): 商店名稱\n
-        items (list): 商品列表，每個項目包含 {'name': str, 'price': int, 'description': str}\n
-        player_money (int): 玩家當前金錢\n
-        """
-        self.is_visible = True
-        self.current_shop = shop_name
-        self.current_items = items
-        self.player_money = player_money
-        
-        # 創建購買按鈕
-        self._create_buttons()
-        
-        print(f"顯示商店: {shop_name}")
-
-    def hide(self):
-        """
-        隱藏商店界面\n
-        """
-        self.is_visible = False
-        self.current_shop = None
-        self.current_items = []
-        self.buttons = []
-        self.hovered_button = None
-
-    def _create_buttons(self):
-        """
-        創建購買按鈕\n
-        """
-        self.buttons = []
-        button_width = 80
-        button_height = 30
-        
-        # 為每個商品創建購買按鈕
-        for i, item in enumerate(self.current_items):
-            button_x = self.x + self.width - button_width - 20
-            button_y = self.y + 120 + i * 60
+    def open_shop(self, shop_type):
+        if shop_type in self.shops:
+            self.current_shop_type = shop_type
+            print(f"🛍️ 歡迎光臨{shop_type.value}！")
+            print(f"DEBUG: 商店已開啟，類型={shop_type}, is_shop_open={self.is_shop_open()}")
+        else:
+            print(f"DEBUG: 商店類型 {shop_type} 不存在於 shops 中")
+    
+    def close_shop(self):
+        if self.current_shop_type:
+            print(f"👋 謝謝您光臨{self.current_shop_type.value}！")
+            self.current_shop_type = None
+    
+    def is_shop_open(self):
+        return self.current_shop_type is not None
+    
+    def handle_mouse_click(self, mouse_pos, player):
+        if not self.is_shop_open():
+            return False
             
-            button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
-            
-            # 檢查玩家是否有足夠金錢
-            can_afford = self.player_money >= item['price']
-            
-            button_data = {
-                'rect': button_rect,
-                'item_index': i,
-                'item': item,
-                'can_afford': can_afford,
-                'text': '購買'
-            }
-            
-            self.buttons.append(button_data)
-
-    def handle_mouse_move(self, mouse_pos):
-        """
-        處理滑鼠移動事件\n
-        \n
-        參數:\n
-        mouse_pos (tuple): 滑鼠位置\n
-        """
-        self.hovered_button = None
+        current_shop = self.shops[self.current_shop_type]
         
-        for button in self.buttons:
-            if button['rect'].collidepoint(mouse_pos):
-                self.hovered_button = button
-                break
-
-    def handle_mouse_click(self, mouse_pos):
-        """
-        處理滑鼠點擊事件\n
-        \n
-        參數:\n
-        mouse_pos (tuple): 滑鼠位置\n
-        \n
-        回傳:\n
-        dict: 購買結果，如果沒有點擊則返回None\n
-        """
-        for button in self.buttons:
-            if button['rect'].collidepoint(mouse_pos) and button['can_afford']:
-                # 返回購買信息
-                return {
-                    'action': 'buy',
-                    'item': button['item'],
-                    'item_index': button['item_index']
-                }
+        # 計算商品網格位置 - 調整為2x2的4格佈局
+        start_x, start_y = 450, 220
+        item_width, item_height = 120, 120  # 加大商品格子
+        grid_cols = 2  # 改為每行2格
+        spacing = 30  # 格子間距
         
-        return None
-
-    def update_player_money(self, new_money):
-        """
-        更新玩家金錢顯示\n
-        \n
-        參數:\n
-        new_money (int): 新的金錢數量\n
-        """
-        self.player_money = new_money
+        # 只顯示前4個商品
+        items_to_show = current_shop.items[:4]
         
-        # 更新按鈕狀態
-        for button in self.buttons:
-            button['can_afford'] = self.player_money >= button['item']['price']
-
-    def draw(self, screen):
-        """
-        繪製商店界面\n
-        \n
-        參數:\n
-        screen (pygame.Surface): 繪製目標表面\n
-        """
-        if not self.is_visible:
+        for i, item in enumerate(items_to_show):
+            col = i % grid_cols
+            row = i // grid_cols
+            
+            item_x = start_x + col * (item_width + spacing)
+            item_y = start_y + row * (item_height + spacing)
+            
+            # 檢查點擊是否在商品區域內
+            if (item_x <= mouse_pos[0] <= item_x + item_width and 
+                item_y <= mouse_pos[1] <= item_y + item_height):
+                
+                # 嘗試購買商品
+                if player.money >= item.price:
+                    player.money -= item.price
+                    self._apply_item_effect(item, player)
+                    print(f"✅ 購買了 {item.name}，花費 ${item.price}")
+                    return True
+                else:
+                    print(f"❌ 金錢不足！需要 ${item.price}，您只有 ${player.money}")
+                    return True
+        
+        return False
+    
+    def handle_key_input(self, event):
+        if not self.is_shop_open():
+            return False
+            
+        if event.key == pygame.K_ESCAPE:
+            self.close_shop()
+            return True
+            
+        return False
+    
+    def _apply_item_effect(self, item, player):
+        if item.effect == "health_restore":
+            player.health = min(player.max_health, player.health + item.effect_value)
+            print(f"💊 血量回復 {item.effect_value}，當前血量：{player.health}")
+            
+        elif item.effect == "health_regen":
+            if not hasattr(player, 'health_regen_rate'):
+                player.health_regen_rate = 0
+            player.health_regen_rate += item.effect_value
+            print(f"💚 每秒血量回復 +{item.effect_value}，總回復率：{player.health_regen_rate}")
+            
+        elif item.effect == "defense":
+            player.defense += item.effect_value
+            print(f"🛡️ 防禦力 +{item.effect_value}，當前防禦：{player.defense}")
+            
+        elif item.effect == "weapon":
+            print(f"🔫 獲得武器：{item.name}")
+    
+    def update_player_effects(self, player):
+        if hasattr(player, 'health_regen_rate') and player.health_regen_rate > 0:
+            old_health = player.health
+            player.health = min(player.max_health, player.health + player.health_regen_rate / 60)
+    
+    def draw(self, screen, player):
+        if not self.is_shop_open():
             return
+            
+        current_shop = self.shops[self.current_shop_type]
         
-        # 繪製半透明背景
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        overlay.set_alpha(150)
-        overlay.fill((0, 0, 0))
-        screen.blit(overlay, (0, 0))
+        # 繪製商店背景
+        shop_bg = pygame.Rect(400, 150, 400, 400)  # 增加高度適應新佈局
+        pygame.draw.rect(screen, (245, 245, 220), shop_bg)  # 改為米白色
+        pygame.draw.rect(screen, (139, 69, 19), shop_bg, 3)  # 棕色邊框
         
-        # 繪製主視窗
-        main_rect = pygame.Rect(self.x, self.y, self.width, self.height)
-        pygame.draw.rect(screen, self.bg_color, main_rect)
-        pygame.draw.rect(screen, self.border_color, main_rect, 3)
-        
-        # 繪製標題
-        title_text = self.font_manager.render_text(self.current_shop, 24, (255, 255, 255))
-        title_rect = title_text.get_rect(center=(self.x + self.width//2, self.y + 30))
+        # 繪製商店標題
+        title_font = self.font_manager.get_font(24)
+        title_text = title_font.render(f"{current_shop.name}", True, (139, 69, 19))  # 棕色標題
+        title_rect = title_text.get_rect(center=(600, 170))
         screen.blit(title_text, title_rect)
         
         # 繪製玩家金錢
-        money_text = self.font_manager.render_text(f"當前金錢: ${self.player_money}", 18, (255, 215, 0))
-        money_rect = money_text.get_rect(center=(self.x + self.width//2, self.y + 70))
-        screen.blit(money_text, money_rect)
+        money_font = self.font_manager.get_font(18)
+        money_text = money_font.render(f"金錢: ${player.money}", True, (255, 215, 0))  # 金色
+        screen.blit(money_text, (420, 190))
         
-        # 繪製商品列表
-        current_y = self.y + 120
-        for i, item in enumerate(self.current_items):
-            # 商品名稱
-            name_text = self.font_manager.render_text(item['name'], 16, (255, 255, 255))
-            screen.blit(name_text, (self.x + 20, current_y))
-            
-            # 商品價格
-            price_text = self.font_manager.render_text(f"${item['price']}", 16, (255, 215, 0))
-            screen.blit(price_text, (self.x + 20, current_y + 20))
-            
-            # 商品描述（如果有）
-            if 'description' in item and item['description']:
-                desc_text = self.font_manager.render_text(item['description'], 12, (200, 200, 200))
-                screen.blit(desc_text, (self.x + 20, current_y + 40))
-            
-            current_y += 60
+        # 繪製商品網格 - 2x2的4格佈局
+        start_x, start_y = 450, 220
+        item_width, item_height = 120, 120  # 加大商品格子
+        grid_cols = 2  # 改為每行2格
+        spacing = 30  # 格子間距
         
-        # 繪製購買按鈕
-        self._draw_buttons(screen)
+        # 只顯示前4個商品
+        items_to_show = current_shop.items[:4]
         
-        # 繪製關閉提示
-        close_text = self.font_manager.render_text("按ESC關閉商店", 14, (180, 180, 180))
-        close_rect = close_text.get_rect(center=(self.x + self.width//2, self.y + self.height - 20))
-        screen.blit(close_text, close_rect)
-
-    def _draw_buttons(self, screen):
-        """
-        繪製購買按鈕\n
-        \n
-        參數:\n
-        screen (pygame.Surface): 繪製目標表面\n
-        """
-        for button in self.buttons:
-            # 決定按鈕顏色
-            if not button['can_afford']:
-                color = self.button_disabled_color
-            elif button == self.hovered_button:
-                color = self.button_hover_color
+        for i, item in enumerate(items_to_show):
+            col = i % grid_cols
+            row = i // grid_cols
+            
+            item_x = start_x + col * (item_width + spacing)
+            item_y = start_y + row * (item_height + spacing)
+            
+            # 繪製商品格子背景
+            item_rect = pygame.Rect(item_x, item_y, item_width, item_height)
+            if player.money >= item.price:
+                pygame.draw.rect(screen, (255, 255, 255), item_rect)  # 白色表示可購買
             else:
-                color = self.button_color
+                pygame.draw.rect(screen, (200, 200, 200), item_rect)  # 灰色表示買不起
+            pygame.draw.rect(screen, (139, 69, 19), item_rect, 3)  # 棕色邊框
             
-            # 繪製按鈕背景
-            pygame.draw.rect(screen, color, button['rect'])
-            pygame.draw.rect(screen, self.border_color, button['rect'], 2)
+            # 繪製商品圖片（如果有載入成功）
+            if item.image:
+                # 計算圖片居中位置
+                image_rect = item.image.get_rect()
+                image_x = item_x + (item_width - image_rect.width) // 2
+                image_y = item_y + 10  # 距離上邊距10像素
+                screen.blit(item.image, (image_x, image_y))
+            else:
+                # 如果圖片載入失敗，顯示預設圖示
+                no_image_font = self.font_manager.get_font(36)
+                no_image_text = no_image_font.render("?", True, (100, 100, 100))
+                text_rect = no_image_text.get_rect()
+                text_x = item_x + (item_width - text_rect.width) // 2
+                text_y = item_y + 30
+                screen.blit(no_image_text, (text_x, text_y))
             
-            # 繪製按鈕文字
-            text_color = (255, 255, 255) if button['can_afford'] else (128, 128, 128)
-            button_text = self.font_manager.render_text(button['text'], 14, text_color)
-            text_rect = button_text.get_rect(center=button['rect'].center)
-            screen.blit(button_text, text_rect)
-
-
-######################商店基礎類別######################
-class BaseShop:
-    """
-    商店基礎類別 - 所有商店的共同基礎\n
-    \n
-    提供商店的基本功能：\n
-    - 位置和範圍管理\n
-    - 庫存管理\n
-    - 購買邏輯\n
-    - 玩家互動檢測\n
-    """
-
-    def __init__(self, x, y, shop_name, shop_type):
-        """
-        初始化商店\n
-        \n
-        參數:\n
-        x (int): 商店X座標\n
-        y (int): 商店Y座標\n
-        shop_name (str): 商店名稱\n
-        shop_type (str): 商店類型\n
-        """
-        self.x = x
-        self.y = y
-        self.shop_name = shop_name
-        self.shop_type = shop_type
+            # 繪製商品名稱
+            name_font = self.font_manager.get_font(12)
+            name_text = name_font.render(item.name, True, (0, 0, 0))
+            name_rect = name_text.get_rect()
+            
+            # 如果文字太長，縮放顯示
+            if name_rect.width > item_width - 10:
+                scale_ratio = (item_width - 10) / name_rect.width
+                scaled_width = int(name_rect.width * scale_ratio)
+                scaled_height = int(name_rect.height * scale_ratio)
+                name_text = pygame.transform.scale(name_text, (scaled_width, scaled_height))
+                name_rect = name_text.get_rect()
+            
+            name_x = item_x + (item_width - name_rect.width) // 2
+            name_y = item_y + item_height - 40
+            screen.blit(name_text, (name_x, name_y))
+            
+            # 繪製商品價格
+            price_font = self.font_manager.get_font(14)
+            price_text = price_font.render(f"${item.price}", True, (255, 0, 0))  # 紅色價格
+            price_rect = price_text.get_rect()
+            price_x = item_x + (item_width - price_rect.width) // 2
+            price_y = item_y + item_height - 20
+            screen.blit(price_text, (price_x, price_y))
         
-        # 字體管理器
-        self.font_manager = FontManager()
-        
-        # 商店尺寸
-        self.width = 60
-        self.height = 40
-        self.rect = pygame.Rect(x, y, self.width, self.height)
-        
-        # 互動範圍
-        self.interaction_range = 50
-        self.is_player_nearby = False
-        
-        # 商店庫存
-        self.inventory = {}
-        
-        # 初始化商店特定庫存
-        self._setup_inventory()
-        
-        print(f"創建商店: {shop_name} 於 ({x}, {y})")
-
-    def _setup_inventory(self):
-        """
-        設定商店庫存 - 子類別需要重寫\n
-        """
-        pass
-
-    def is_near_player(self, player_position):
-        """
-        檢查玩家是否在互動範圍內\n
-        \n
-        參數:\n
-        player_position (tuple): 玩家位置\n
-        \n
-        回傳:\n
-        bool: 是否在互動範圍內\n
-        """
-        player_x, player_y = player_position
-        distance = ((self.x - player_x) ** 2 + (self.y - player_y) ** 2) ** 0.5
-        
-        was_nearby = self.is_player_nearby
-        self.is_player_nearby = distance <= self.interaction_range
-        
-        # 如果狀態改變，輸出提示
-        if self.is_player_nearby and not was_nearby:
-            print(f"進入 {self.shop_name} 互動範圍")
-        elif was_nearby and not self.is_player_nearby:
-            print(f"離開 {self.shop_name} 互動範圍")
-        
-        return self.is_player_nearby
-
-    def get_shop_items(self):
-        """
-        獲取商店商品列表\n
-        \n
-        回傳:\n
-        list: 商品列表\n
-        """
-        items = []
-        for item_id, item_data in self.inventory.items():
-            if item_data['stock'] > 0:  # 只顯示有庫存的商品
-                items.append({
-                    'id': item_id,
-                    'name': item_data['name'],
-                    'price': item_data['price'],
-                    'description': item_data.get('description', ''),
-                    'stock': item_data['stock']
-                })
-        
-        return items
-
-    def buy_item(self, item_id, player):
-        """
-        購買商品\n
-        \n
-        參數:\n
-        item_id (str): 商品ID\n
-        player (Player): 玩家物件\n
-        \n
-        回傳:\n
-        dict: 購買結果\n
-        """
-        if item_id not in self.inventory:
-            return {"success": False, "message": "商品不存在"}
-        
-        item = self.inventory[item_id]
-        
-        # 檢查庫存
-        if item['stock'] <= 0:
-            return {"success": False, "message": f"{item['name']}已售完"}
-        
-        # 檢查玩家金錢
-        if player.money < item['price']:
-            return {"success": False, "message": "金錢不足"}
-        
-        # 執行購買
-        player.money -= item['price']
-        item['stock'] -= 1
-        
-        # 處理特定商品的效果
-        self._apply_item_effect(item_id, player)
-        
-        return {
-            "success": True,
-            "message": f"成功購買 {item['name']}！",
-            "item": item
-        }
-
-    def _apply_item_effect(self, item_id, player):
-        """
-        應用商品效果 - 子類別可以重寫\n
-        \n
-        參數:\n
-        item_id (str): 商品ID\n
-        player (Player): 玩家物件\n
-        """
-        pass
-
-    def draw(self, screen, camera_x=0, camera_y=0):
-        """
-        繪製商店\n
-        \n
-        參數:\n
-        screen (pygame.Surface): 繪製目標表面\n
-        camera_x (int): 攝影機X偏移\n
-        camera_y (int): 攝影機Y偏移\n
-        """
-        # 計算螢幕座標
-        screen_x = self.x - camera_x
-        screen_y = self.y - camera_y
-        
-        # 檢查是否在螢幕範圍內
-        if (screen_x + self.width < 0 or screen_x > SCREEN_WIDTH or
-            screen_y + self.height < 0 or screen_y > SCREEN_HEIGHT):
-            return
-        
-        # 繪製商店建築
-        shop_rect = pygame.Rect(screen_x, screen_y, self.width, self.height)
-        pygame.draw.rect(screen, (139, 69, 19), shop_rect)  # 棕色
-        pygame.draw.rect(screen, (0, 0, 0), shop_rect, 2)  # 黑色邊框
-        
-        # 繪製商店名稱
-        font = self.font_manager.get_font(16)
-        name_text = font.render(self.shop_name, True, (255, 255, 255))
-        name_rect = name_text.get_rect(center=(screen_x + self.width//2, screen_y - 10))
-        screen.blit(name_text, name_rect)
-        
-        # 如果玩家在附近，顯示互動提示
-        if self.is_player_nearby:
-            hint_text = font.render("按右鍵進入商店", True, (255, 255, 0))
-            hint_rect = hint_text.get_rect(center=(screen_x + self.width//2, screen_y + self.height + 15))
-            screen.blit(hint_text, hint_rect)
+        # 繪製說明文字
+        help_font = self.font_manager.get_font(14)
+        help_text = help_font.render("點擊商品購買，按 ESC 關閉", True, (100, 100, 100))
+        screen.blit(help_text, (420, 510))

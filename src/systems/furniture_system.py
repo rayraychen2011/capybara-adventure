@@ -134,6 +134,16 @@ class Furniture:
             return self._interact_wardrobe(player)
         elif self.furniture_type == "tv":
             return self._interact_tv(player)
+        elif self.furniture_type == "save_point":
+            return self._interact_save_point(player)
+        elif self.furniture_type == "sofa":
+            return self._interact_sofa(player)
+        elif self.furniture_type == "workbench":
+            return self._interact_workbench(player)
+        elif self.furniture_type == "storage":
+            return self._interact_storage(player)
+        elif self.furniture_type == "bookshelf":
+            return self._interact_bookshelf(player)
         else:
             return {
                 "success": True,
@@ -189,6 +199,63 @@ class Furniture:
             "action": "watch_tv"
         }
 
+    def _interact_save_point(self, player):
+        """
+        存檔點的互動 - 儲存遊戲\n
+        """
+        return {
+            "success": True,
+            "message": "遊戲已儲存！",
+            "action": "save_game"
+        }
+
+    def _interact_sofa(self, player):
+        """
+        沙發的互動 - 休息恢復精神\n
+        """
+        if hasattr(player, 'stamina'):
+            player.stamina = min(100, getattr(player, 'stamina', 50) + 30)
+            return {
+                "success": True,
+                "message": "在沙發上休息，恢復了精神",
+                "stamina_recovered": 30
+            }
+        else:
+            return {
+                "success": True,
+                "message": "在舒適的沙發上放鬆了一下"
+            }
+
+    def _interact_workbench(self, player):
+        """
+        工作桌的互動 - 製作物品\n
+        """
+        return {
+            "success": True,
+            "message": "工作桌可以用來製作和修理物品",
+            "action": "crafting"
+        }
+
+    def _interact_storage(self, player):
+        """
+        收納箱的互動 - 管理物品\n
+        """
+        return {
+            "success": True,
+            "message": "打開收納箱，可以存放物品",
+            "action": "storage_management"
+        }
+
+    def _interact_bookshelf(self, player):
+        """
+        書櫃的互動 - 學習技能\n
+        """
+        return {
+            "success": True,
+            "message": "閱讀書籍，增加了知識",
+            "action": "reading"
+        }
+
     def draw(self, screen, house_world_x, house_world_y, camera_x, camera_y):
         """
         繪製家具\n
@@ -211,16 +278,55 @@ class Furniture:
         # 創建螢幕矩形
         screen_rect = pygame.Rect(screen_x, screen_y, self.width, self.height)
         
-        # 繪製家具
-        pygame.draw.rect(screen, self.color, screen_rect)
-        pygame.draw.rect(screen, (0, 0, 0), screen_rect, 1)
+        # 載入並使用玩家家專用圖片
+        try:
+            import pygame
+            import os
+            player_home_image_path = "assets/images/playerhome/roguelikeIndoor_magenta.png"
+            
+            # 嘗試載入圖片
+            if hasattr(self, '_cached_image') and self._cached_image:
+                # 使用快取的圖片
+                furniture_image = self._cached_image
+            else:
+                # 載入原始圖片
+                if os.path.exists(player_home_image_path):
+                    original_image = pygame.image.load(player_home_image_path).convert_alpha()
+                    # 縮放圖片到家具大小
+                    furniture_image = pygame.transform.scale(original_image, (self.width, self.height))
+                    # 快取圖片避免重複載入
+                    self._cached_image = furniture_image
+                else:
+                    # 如果圖片不存在，使用原來的繪製方式
+                    furniture_image = None
+            
+            # 繪製家具
+            if furniture_image:
+                # 使用圖片繪製
+                screen.blit(furniture_image, screen_rect)
+                # 加上邊框以便識別
+                pygame.draw.rect(screen, (0, 0, 0), screen_rect, 2)
+            else:
+                # 使用原來的純色繪製方式
+                pygame.draw.rect(screen, self.color, screen_rect)
+                pygame.draw.rect(screen, (0, 0, 0), screen_rect, 1)
+            
+        except Exception as e:
+            # 如果載入圖片失敗，使用原來的繪製方式
+            print(f"家具圖片載入失敗: {e}")
+            pygame.draw.rect(screen, self.color, screen_rect)
+            pygame.draw.rect(screen, (0, 0, 0), screen_rect, 1)
         
         # 繪製家具名稱（如果家具夠大）
         if self.width > 15 and self.height > 10:
             from src.utils.font_manager import get_font_manager
             font_manager = get_font_manager()
-            text = font_manager.render_text(self.name, 12, (255, 255, 255))
+            # 使用黑色文字，因為有圖片背景
+            text = font_manager.render_text(self.name, 12, (0, 0, 0))
             text_rect = text.get_rect(center=screen_rect.center)
+            # 加上白色背景讓文字更清楚
+            text_bg = pygame.Rect(text_rect.x - 2, text_rect.y - 1, text_rect.width + 4, text_rect.height + 2)
+            pygame.draw.rect(screen, (255, 255, 255, 180), text_bg)
             screen.blit(text, text_rect)
 
 
@@ -334,14 +440,56 @@ class Door:
         else:
             color = self.color
         
-        # 繪製門
-        pygame.draw.rect(screen, color, screen_rect)
-        pygame.draw.rect(screen, (0, 0, 0), screen_rect, 1)
+        # 載入並使用玩家家專用圖片
+        try:
+            import pygame
+            import os
+            player_home_image_path = "assets/images/playerhome/roguelikeIndoor_magenta.png"
+            
+            # 嘗試載入圖片
+            if hasattr(self, '_cached_image') and self._cached_image:
+                # 使用快取的圖片
+                door_image = self._cached_image
+            else:
+                # 載入原始圖片
+                if os.path.exists(player_home_image_path):
+                    original_image = pygame.image.load(player_home_image_path).convert_alpha()
+                    # 縮放圖片到門的大小
+                    door_image = pygame.transform.scale(original_image, (self.width, self.height))
+                    # 如果是開著的門，調暗一些
+                    if self.is_open:
+                        # 創建一個半透明的黑色遮罩
+                        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                        overlay.fill((0, 0, 0, 80))  # 半透明黑色
+                        door_image.blit(overlay, (0, 0))
+                    # 快取圖片避免重複載入
+                    self._cached_image = door_image
+                else:
+                    # 如果圖片不存在，使用原來的繪製方式
+                    door_image = None
+            
+            # 繪製門
+            if door_image:
+                # 使用圖片繪製
+                screen.blit(door_image, screen_rect)
+                # 加上邊框以便識別
+                pygame.draw.rect(screen, (139, 69, 19), screen_rect, 3)  # 棕色邊框
+            else:
+                # 使用原來的純色繪製方式
+                pygame.draw.rect(screen, color, screen_rect)
+                pygame.draw.rect(screen, (0, 0, 0), screen_rect, 1)
+            
+        except Exception as e:
+            # 如果載入圖片失敗，使用原來的繪製方式
+            print(f"門圖片載入失敗: {e}")
+            pygame.draw.rect(screen, color, screen_rect)
+            pygame.draw.rect(screen, (0, 0, 0), screen_rect, 1)
         
-        # 繪製門把手
-        handle_x = screen_x + self.width - 2
+        # 繪製門把手（金色，更顯眼）
+        handle_x = screen_x + self.width - 3
         handle_y = screen_y + self.height // 2
-        pygame.draw.circle(screen, (255, 215, 0), (handle_x, handle_y), 1)
+        pygame.draw.circle(screen, (255, 215, 0), (handle_x, handle_y), 2)
+        pygame.draw.circle(screen, (0, 0, 0), (handle_x, handle_y), 2, 1)  # 黑色邊框
 
 
 ######################住宅內部管理器######################
@@ -555,6 +703,54 @@ class HouseInteriorManager:
         if not has_bookshelf:
             bookshelf = Furniture("bookshelf", (5, height - 20), (15, 15))
             interior["furniture"].append(bookshelf)
+        
+        # 添加存檔點（電腦或者特殊的存檔櫃）
+        has_save_point = any(f.furniture_type == "save_point" for f in interior["furniture"])
+        if not has_save_point:
+            save_point = Furniture("save_point", (width // 2 - 10, 5), (20, 12))
+            save_point.name = "存檔點"
+            save_point.interaction_text = "按 E 儲存遊戲"
+            interior["furniture"].append(save_point)
+        
+        # 添加廚房（如果沒有的話）
+        has_kitchen = any(f.furniture_type == "kitchen" for f in interior["furniture"])
+        if not has_kitchen:
+            kitchen = Furniture("kitchen", (5, 5), (20, 15))
+            kitchen.name = "廚房"
+            kitchen.interaction_text = "按 E 烹飪食物"
+            interior["furniture"].append(kitchen)
+        
+        # 添加電視（娛樂功能）
+        has_tv = any(f.furniture_type == "tv" for f in interior["furniture"])
+        if not has_tv:
+            tv = Furniture("tv", (width - 25, 5), (20, 12))
+            tv.name = "電視"
+            tv.interaction_text = "按 E 看電視"
+            interior["furniture"].append(tv)
+        
+        # 添加沙發（休息功能）
+        has_sofa = any(f.furniture_type == "sofa" for f in interior["furniture"])
+        if not has_sofa:
+            sofa = Furniture("sofa", (width // 2 - 15, height - 25), (30, 12))
+            sofa.name = "沙發"
+            sofa.interaction_text = "按 E 休息"
+            interior["furniture"].append(sofa)
+        
+        # 添加工作桌（製作功能）
+        has_workbench = any(f.furniture_type == "workbench" for f in interior["furniture"])
+        if not has_workbench:
+            workbench = Furniture("workbench", (5, height // 2 - 8), (25, 16))
+            workbench.name = "工作桌"
+            workbench.interaction_text = "按 E 製作物品"
+            interior["furniture"].append(workbench)
+        
+        # 添加收納箱（儲存功能）
+        has_storage = any(f.furniture_type == "storage" for f in interior["furniture"])
+        if not has_storage:
+            storage = Furniture("storage", (width - 18, height // 2), (15, 10))
+            storage.name = "收納箱"
+            storage.interaction_text = "按 E 管理物品"
+            interior["furniture"].append(storage)
         
         return interior
 

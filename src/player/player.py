@@ -91,6 +91,12 @@ class Player:
         # 金錢
         self.money = INITIAL_MONEY
 
+        # 防禦力系統（新增）
+        self.defense = 0  # 基礎防禦力為0
+
+        # 血量回復系統（新增）
+        self.health_regen_rate = 0  # 每秒血量回復率
+
         # 魚餌系統
         self.current_bait = "普通魚餌"  # 當前選用的魚餌
         self.bait_inventory = {
@@ -216,12 +222,18 @@ class Player:
         """
         更新血量管理系統\n
         \n
-        處理低血量時的心跳聲和自動回復\n
+        處理低血量時的心跳聲和自動回復，以及購買物品的持續血量回復\n
         \n
         參數:\n
         dt (float): 時間間隔\n
         """
         current_time = pygame.time.get_ticks() / 1000.0
+        
+        # 處理購買物品的持續血量回復（新增）
+        if hasattr(self, 'health_regen_rate') and self.health_regen_rate > 0:
+            old_health = self.health
+            health_increase = self.health_regen_rate * dt  # 每秒回復 health_regen_rate 點血量
+            self.health = min(self.max_health, self.health + health_increase)
         
         # 檢查是否血量低於閾值
         if self.health < HEALTH_LOW_THRESHOLD:
@@ -1016,7 +1028,6 @@ class Player:
         繪製方向指示器\n
         \n
         在角色身上繪製等腰三角形表示面朝方向\n
-        這與小地圖上的表示方式一致\n
         \n
         參數:\n
         screen (pygame.Surface): 要繪製到的螢幕表面\n

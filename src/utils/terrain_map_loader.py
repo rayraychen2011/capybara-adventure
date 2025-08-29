@@ -196,50 +196,6 @@ class TerrainMapLoader:
         """
         return self.terrain_colors.get(terrain_code, (255, 255, 255))
     
-    def render_minimap(self, surface: pygame.Surface, scale: int = 2, show_labels: bool = False) -> None:
-        """
-        在指定表面上渲染地圖縮圖\n
-        \n
-        參數:\n
-        surface (pygame.Surface): 要繪製的表面\n
-        scale (int): 縮放比例，每個地形格子的像素大小\n
-        show_labels (bool): 是否顯示地形類型標籤（需要初始化字體系統）\n
-        """
-        if not self.map_data:
-            return
-            
-        # 如果需要顯示標籤，初始化字體系統
-        font_manager = None
-        if show_labels:
-            try:
-                font_manager = get_font_manager()
-            except:
-                print("字體系統未初始化，將不顯示標籤")
-                show_labels = False
-            
-        # 逐格繪製地形
-        for y in range(self.map_height):
-            for x in range(self.map_width):
-                terrain_code = self.map_data[y][x]
-                color = self.get_terrain_color(terrain_code)
-                
-                # 計算繪製位置和大小
-                rect = pygame.Rect(x * scale, y * scale, scale, scale)
-                pygame.draw.rect(surface, color, rect)
-                
-                # 繪製格子邊框（當格子夠大時）
-                if scale >= 8:
-                    pygame.draw.rect(surface, (128, 128, 128), rect, 1)
-                
-                # 顯示地形編碼（當格子非常大時）
-                if show_labels and font_manager and scale >= 20:
-                    try:
-                        text_surface = font_manager.render_text(str(terrain_code), 12, (255, 255, 255))
-                        text_rect = text_surface.get_rect(center=rect.center)
-                        surface.blit(text_surface, text_rect)
-                    except:
-                        pass  # 忽略文字渲染錯誤
-    
     def render_legend(self, surface: pygame.Surface, x: int = 10, y: int = 10, 
                      item_height: int = 25, use_chinese_font: bool = True) -> None:
         """
