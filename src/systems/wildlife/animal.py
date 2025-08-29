@@ -2,6 +2,7 @@
 import pygame
 import random
 import math
+import os
 from enum import Enum
 from src.systems.wildlife.animal_data import (
     AnimalType,
@@ -98,6 +99,12 @@ class Animal:
             128,
             128,
         )
+        
+        # 載入動物圖像
+        self.image = self._load_animal_image()
+        self.image_size = (self.size * 4, self.size * 4)  # 圖像大小為動物大小的4倍
+        if self.image:
+            self.image = pygame.transform.scale(self.image, self.image_size)
 
         # 視野系統 - 根據需求設定
         self.vision_angle = 120  # 視野角度（度）
@@ -137,6 +144,39 @@ class Animal:
         self.drop_items = AnimalData.get_animal_loot(animal_type)
 
         print(f"創建動物: {animal_type.value} (ID: {self.id})")
+
+    def _load_animal_image(self):
+        """
+        載入動物對應的圖像檔案\n
+        \n
+        回傳:\n
+        pygame.Surface: 載入的圖像，失敗時回傳None\n
+        """
+        # 動物類型對應的檔案名稱
+        image_map = {
+            AnimalType.RABBIT: "rabbit.png",
+            AnimalType.TURTLE: "turtle.png", 
+            AnimalType.SHEEP: "sheep.png",
+            AnimalType.MOUNTAIN_LION: "山獅.png",  # 使用山獅專屬圖像
+            AnimalType.BLACK_PANTHER: "panther.png",
+            AnimalType.BEAR: "bear.png",
+        }
+        
+        # 獲取對應的檔案名稱
+        filename = image_map.get(self.animal_type)
+        if not filename:
+            return None
+            
+        # 建構圖像檔案路徑
+        image_path = os.path.join("assets", "images", filename)
+        
+        try:
+            # 載入圖像
+            image = pygame.image.load(image_path).convert_alpha()
+            return image
+        except (pygame.error, FileNotFoundError) as e:
+            print(f"無法載入動物圖像 {image_path}: {e}")
+            return None
 
     def set_terrain_system(self, terrain_system):
         """
@@ -814,23 +854,38 @@ class Animal:
         
         if not self.is_alive:
             # 死亡動物變暗顯示
-            dead_color = tuple(c // 3 for c in self.color)
-            pygame.draw.circle(
-                screen, dead_color, (draw_x, draw_y), self.size
-            )
-            pygame.draw.circle(
-                screen, (255, 0, 0), (draw_x, draw_y), self.size, 2
-            )  # 紅色邊框
+            if self.image:
+                # 使用圖像但變暗
+                darkened_image = self.image.copy()
+                darkened_image.fill((100, 100, 100, 180), special_flags=pygame.BLEND_RGBA_MULT)
+                image_rect = darkened_image.get_rect(center=(draw_x, draw_y))
+                screen.blit(darkened_image, image_rect)
+                # 紅色邊框
+                pygame.draw.circle(screen, (255, 0, 0), (draw_x, draw_y), self.size + 10, 2)
+            else:
+                # 降級到圓形顯示
+                dead_color = tuple(c // 3 for c in self.color)
+                pygame.draw.circle(screen, dead_color, (draw_x, draw_y), self.size)
+                pygame.draw.circle(screen, (255, 0, 0), (draw_x, draw_y), self.size, 2)
             return
 
         # 繪製動物本體
-        pygame.draw.circle(screen, self.color, (draw_x, draw_y), self.size)
+        if self.image:
+            # 使用圖像繪製
+            image_rect = self.image.get_rect(center=(draw_x, draw_y))
+            screen.blit(self.image, image_rect)
+        else:
+            # 降級到圓形繪製
+            pygame.draw.circle(screen, self.color, (draw_x, draw_y), self.size)
 
         # 根據狀態添加視覺效果
+        # 計算效果半徑（圖像模式使用較大的半徑）
+        effect_radius = max(self.size * 2, 20) if self.image else self.size
+        
         if self.state == AnimalState.ALERT:
             # 警戒狀態：黃色邊框
             pygame.draw.circle(
-                screen, (255, 255, 0), (draw_x, draw_y), self.size, 3
+                screen, (255, 255, 0), (draw_x, draw_y), effect_radius, 3
             )
         elif self.state == AnimalState.FLEEING:
             # 逃跑狀態：閃爍效果
@@ -839,43 +894,46 @@ class Animal:
                     screen,
                     (255, 255, 255),
                     (draw_x, draw_y),
-                    self.size + 3,
+                    effect_radius + 3,
                     2,
                 )
         elif self.state == AnimalState.ATTACKING:
             # 攻擊狀態：紅色邊框
             pygame.draw.circle(
-                screen, (255, 0, 0), (draw_x, draw_y), self.size, 3
+                screen, (255, 0, 0), (draw_x, draw_y), effect_radius, 3
             )
         elif self.state == AnimalState.ROARING:
             # 怒吼狀態：橘色邊框閃爍
             if int(pygame.time.get_ticks() / 150) % 2:
                 pygame.draw.circle(
-                    screen, (255, 165, 0), (draw_x, draw_y), self.size + 5, 4
+                    screen, (255, 165, 0), (draw_x, draw_y), effect_radius + 5, 4
                 )
 
-        # 稀有度標記
+        # 稀有度標記（調整位置適應圖像顯示）
+        marker_offset_y = max(self.size * 2, 20) if self.image else self.size
+        marker_offset_x = max(self.size * 2, 20) if self.image else self.size
+        
         if self.rarity == RarityLevel.LEGENDARY:
             # 傳奇動物：金色王冠標記
             pygame.draw.circle(
-                screen, (255, 215, 0), (draw_x, draw_y - self.size - 8), 6
+                screen, (255, 215, 0), (draw_x, draw_y - marker_offset_y - 8), 6
             )
         elif self.rarity == RarityLevel.SUPER_RARE:
             # 超稀有動物：紫色星星標記
             pygame.draw.circle(
-                screen, (128, 0, 128), (draw_x, draw_y - self.size - 8), 5
+                screen, (128, 0, 128), (draw_x, draw_y - marker_offset_y - 8), 5
             )
         elif self.rarity == RarityLevel.RARE:
             # 稀有動物：藍色點標記
             pygame.draw.circle(
-                screen, (0, 100, 255), (draw_x, draw_y - self.size - 8), 4
+                screen, (0, 100, 255), (draw_x, draw_y - marker_offset_y - 8), 4
             )
 
         # 保育類動物特殊標記
         if self.is_protected:
             # 綠色保護標記
             pygame.draw.circle(
-                screen, (0, 255, 0), (draw_x + self.size, draw_y - self.size), 4
+                screen, (0, 255, 0), (draw_x + marker_offset_x, draw_y - marker_offset_y), 4
             )
 
         # 健康條 (如果受傷)
@@ -925,10 +983,17 @@ class Animal:
         draw_x (int): 螢幕上的X座標\n
         draw_y (int): 螢幕上的Y座標\n
         """
-        bar_width = self.size * 2
+        # 根據是否有圖像調整健康條大小和位置
+        if self.image:
+            bar_width = max(self.image_size[0], 40)
+            bar_y_offset = self.image_size[1] // 2 + 8
+        else:
+            bar_width = self.size * 2
+            bar_y_offset = self.size + 12
+            
         bar_height = 4
         bar_x = draw_x - bar_width // 2
-        bar_y = draw_y - self.size - 12
+        bar_y = draw_y - bar_y_offset
 
         # 背景條 (紅色)
         pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))
@@ -946,10 +1011,18 @@ class Animal:
         screen (pygame.Surface): 繪製目標表面\n
         font (pygame.font.Font): 字體物件\n
         """
+        # 根據是否有圖像調整資訊位置
+        if self.image:
+            name_y_offset = self.image_size[1] // 2 + 25
+            status_y_offset = self.image_size[1] // 2 + 15
+        else:
+            name_y_offset = self.size + 25
+            status_y_offset = self.size + 15
+        
         # 動物名稱
         name_surface = font.render(self.animal_type.value, True, (0, 0, 0))
         name_rect = name_surface.get_rect(
-            center=(int(self.x), int(self.y) - self.size - 25)
+            center=(int(self.x), int(self.y) - name_y_offset)
         )
         screen.blit(name_surface, name_rect)
 
@@ -960,7 +1033,7 @@ class Animal:
 
         status_surface = font.render(status_text, True, (100, 100, 100))
         status_rect = status_surface.get_rect(
-            center=(int(self.x), int(self.y) + self.size + 15)
+            center=(int(self.x), int(self.y) + status_y_offset)
         )
         screen.blit(status_surface, status_rect)
 
