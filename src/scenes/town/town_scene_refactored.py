@@ -9,6 +9,7 @@ from src.player.input_controller import InputController
 from src.utils.font_manager import get_font_manager
 from src.utils.npc_info_ui import NPCInfoUI
 from src.utils.npc_status_ui import NPCStatusDisplayUI  # 新增NPC狀態顯示
+from src.utils.farmer_status_ui import FarmerStatusUI  # 新增農夫狀態顯示
 from src.utils.minimap_ui import MinimapUI
 from src.utils.time_ui import TimeDisplayUI
 from src.utils.weapon_wheel_ui import WeaponWheelUI
@@ -27,6 +28,7 @@ from src.systems.shop_types import ShopManager, ConvenienceStore, StreetVendor, 
 from src.systems.church_system import Church, BlessingSystem, ChurchScene  # 新增教堂系統
 from src.systems.axe_system import TreeManager, Axe  # 新增斧頭系統
 from src.systems.building_label_system import BuildingLabelSystem, BuildingTypeDetector  # 新增建築標示系統
+from src.systems.weather_system import WeatherEffectSystem  # 新增天氣特效系統
 from src.scenes.town.town_camera_controller import TownCameraController
 from src.scenes.town.town_ui_manager import TownUIManager
 from src.scenes.town.town_interaction_handler import TownInteractionHandler
@@ -145,6 +147,9 @@ class TownScene(Scene):
         # 建立蔬果園採集系統
         self.vegetable_garden_system = VegetableGardenSystem(self.terrain_system)
         
+        # 建立天氣特效系統
+        self.weather_system = WeatherEffectSystem()
+        
         # 建立新的遊戲系統
         self.shooting_system = ShootingSystem()  # 新的射擊系統
         self.crosshair_system = CrosshairSystem()  # 準心系統
@@ -186,6 +191,7 @@ class TownScene(Scene):
         self.minimap_ui = MinimapUI()
         self.npc_info_ui = NPCInfoUI()
         self.npc_status_ui = NPCStatusDisplayUI()  # 新增NPC狀態顯示UI
+        self.farmer_status_ui = FarmerStatusUI()  # 新增農夫狀態顯示UI
         self.npc_dialogue_ui = NPCDialogueUI()  # 新增NPC對話UI
         self.time_ui = TimeDisplayUI(position="top_center", style="compact")
         self.weapon_wheel_ui = WeaponWheelUI()
@@ -216,6 +222,15 @@ class TownScene(Scene):
         self.npc_manager.set_terrain_system_reference(self.terrain_system)
         self.npc_manager.set_road_system_reference(self.road_manager)
         self.npc_manager.set_tile_map_reference(self.tile_map)
+        
+        # 連接天氣系統與手機UI
+        self.weather_system.phone_ui = self.phone_ui
+        # 設定初始天氣（與手機UI同步）
+        self.weather_system.set_weather(self.phone_ui.current_weather)
+        
+        # 連接時間系統與天氣系統
+        if self.time_manager:
+            self.time_manager.set_weather_system(self.weather_system)
 
     def _initialize_scene_content(self):
         """
@@ -238,7 +253,7 @@ class TownScene(Scene):
         self._setup_player_home()
 
         # 初始化野生動物 - 設定在地形代碼1的區域
-        self.wildlife_manager.initialize_animals(scene_type="forest")
+        self.wildlife_manager.initialize_animals(scene_type="all")  # 初始化所有類型動物（森林、湖泊、草原）
         
         # 初始化路燈系統
         self.street_light_system.initialize_street_lights()
@@ -409,6 +424,16 @@ class TownScene(Scene):
         # 更新蔬菜花園系統
         self.vegetable_garden_system.update(dt)
         
+        # 更新天氣特效系統
+        self.weather_system.update(dt)
+        
+        # 檢查玩家是否進入蔬果園自動採收
+        player_pos = (self.player.x, self.player.y)
+        auto_harvest_result = self.vegetable_garden_system.check_auto_harvest(player_pos, self.player)
+        if auto_harvest_result:
+            print(f"🌱 自動採收: {auto_harvest_result['message']}")
+            self.ui_manager.show_message(f"自動採收 {auto_harvest_result['vegetable']} (+{auto_harvest_result['money_earned']}元)")
+
         # 更新防重疊傳送系統
         self.anti_overlap_system.update(dt, self.player, self.npc_manager)
         
@@ -516,6 +541,14 @@ class TownScene(Scene):
         
         # 繪製NPC狀態顯示UI（在最上層）
         self.npc_status_ui.draw(screen, self.npc_manager)
+        
+        # 繪製農夫狀態UI（在最上層）
+        if hasattr(self.npc_manager, 'farmer_scheduler'):
+            self.farmer_status_ui.draw(screen, self.npc_manager.farmer_scheduler, self.time_manager)
+            # 在地圖上顯示農夫狀態標記
+            camera_x = self.camera_controller.camera_x
+            camera_y = self.camera_controller.camera_y
+            self.farmer_status_ui.draw_farmer_info_on_map(screen, camera_x, camera_y, self.npc_manager.farmer_scheduler)
 
     def _draw_terrain(self, screen, visible_rect):
         """
@@ -561,6 +594,9 @@ class TownScene(Scene):
 
         # 繪製建築物
         self.terrain_system.draw_buildings(screen, camera_x, camera_y, get_font_manager())
+        
+        # 繪製天氣特效（在建築物之後，實體之前）
+        self.weather_system.draw(screen, camera_x, camera_y)
 
     def _draw_entities(self, screen, visible_rect):
         """
@@ -712,8 +748,12 @@ class TownScene(Scene):
                 return True
 
         elif event.type == pygame.MOUSEWHEEL:
+            # 操作指南滾動 - 最高優先級
+            if self.operation_guide_ui.is_visible:
+                self.operation_guide_ui.handle_scroll(event.y)
+                return True
             # 中鍵滾輪 - 小地圖縮放
-            if self.minimap_ui.is_visible:
+            elif self.minimap_ui.is_visible:
                 self.minimap_ui.handle_scroll(event.y)
                 return True
             elif self.ui_manager.handle_mouse_input(event):
@@ -820,11 +860,6 @@ class TownScene(Scene):
                 self._toggle_weapon()
                 return True
             
-            # F鍵 - 收穫蔬菜（新增）
-            elif event.key == pygame.K_f:
-                self._handle_vegetable_harvest()
-                return True
-            
             # C鍵 - 對話（暫時用互動代替）
             elif event.key == pygame.K_c:
                 self.interaction_handler.handle_interaction(
@@ -858,6 +893,10 @@ class TownScene(Scene):
         
         # 處理NPC狀態UI事件
         self.npc_status_ui.handle_event(event)
+        
+        # 處理農夫狀態UI事件
+        if hasattr(self.npc_manager, 'farmer_scheduler'):
+            self.farmer_status_ui.handle_key_event(event, self.npc_manager.farmer_scheduler)
 
         return False
 
@@ -894,19 +933,6 @@ class TownScene(Scene):
                 print("🎒 已收起武器")
         else:
             print("❌ 武器系統未初始化")
-
-    def _handle_vegetable_harvest(self):
-        """
-        處理蔬菜收穫（F鍵）\n
-        新增功能：玩家按F鍵收穫附近的蔬菜花園，獲得5元收益\n
-        """
-        player_pos = (self.player.x, self.player.y)
-        result = self.vegetable_garden_system.harvest_nearby_garden(player_pos, self.player)
-        
-        if result['success']:
-            print(f"🥬 {result['message']}")
-        else:
-            print("附近沒有可收穫的蔬菜花園")
 
     def _handle_vegetable_garden_harvest(self, mouse_pos):
         """

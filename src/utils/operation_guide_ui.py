@@ -31,6 +31,12 @@ class OperationGuideUI:
         self.bg_color = (0, 0, 0, 200)  # 半透明黑色
         self.border_color = (255, 255, 255)
         
+        # 滾動相關設定
+        self.scroll_offset = 0  # 滾動偏移量
+        self.line_height = 20  # 每行高度
+        self.content_area_height = self.height - 80  # 內容區域高度（扣除標題和邊距）
+        self.max_visible_lines = self.content_area_height // self.line_height  # 最大可見行數
+        
         # 操作指南內容
         self.guide_content = [
             "🎮 遊戲操作指南",
@@ -40,9 +46,10 @@ class OperationGuideUI:
             "  ▪ Shift + 移動鍵 - 奔跑",
             "",
             "🎯 互動操作：",
+            "  ▪ WASD 或方向鍵 - 移動角色",
+            "  ▪ Shift + 移動鍵 - 奔跑",
             "  ▪ E鍵或空格鍵 - 與物件互動",
             "  ▪ C鍵 - 與NPC對話",
-            "  ▪ F鍵 - 採摘蔬果",
             "  ▪ Q鍵 - 砍伐樹木",
             "  ▪ 滑鼠左鍵 - 點擊建築物進入商店/射擊",
             "  ▪ 滑鼠中鍵 - 召喚武器圓盤",
@@ -78,9 +85,9 @@ class OperationGuideUI:
             "  ▪ 注意：熊具有高度攻擊性，需謹慎接近",
             "",
             "🌱 蔬果園系統：",
-            "  ▪ 在公園區域尋找蔬果園",
-            "  ▪ 按F鍵採摘成熟蔬果獲得5元",
-            "  ▪ 蔬果會定期重新生長",
+            "  ▪ 走到蔬果園附近自動採收成熟蔬果",
+            "  ▪ 每次採收獲得5元獎勵",
+            "  ▪ 蔬果在下一個遊戲日重新成熟",
             "",
             "🚂 交通系統：",
             "  ▪ 點擊火車站 - 快速旅行",
@@ -113,21 +120,48 @@ class OperationGuideUI:
             "",
             "⚙️ 系統功能：",
             "  ▪ 0鍵或\\鍵 - 顯示/隱藏操作指南",
+            "  ▪ 滑鼠滾輪 - 在操作指南中上下滾動",
             "  ▪ ESC鍵 - 暫停遊戲/返回主選單/關閉UI",
             "  ▪ F11 - 切換全螢幕",
             "  ▪ H鍵 - 顯示開發者快捷鍵幫助",
             "  ▪ 遊戲自動存檔",
+            "",
+            "🖱️ 滑鼠滾輪操作說明：",
+            "  ▪ 操作指南顯示時可使用滾輪上下瀏覽",
+            "  ▪ 小地圖顯示時可使用滾輪縮放",
             "",
             "按0鍵或\\鍵或ESC關閉此畫面"
         ]
         
         print("操作指南UI初始化完成")
 
+    def handle_scroll(self, direction):
+        """
+        處理滾輪滾動事件\n
+        \n
+        參數:\n
+        direction (int): 滾動方向 (正數向上滾動, 負數向下滾動)\n
+        """
+        if not self.is_visible:
+            return
+        
+        # 計算需要滾動的行數（每次滾動3行）
+        scroll_lines = 3
+        self.scroll_offset -= direction * scroll_lines
+        
+        # 限制滾動範圍
+        max_scroll = max(0, len(self.guide_content) - self.max_visible_lines)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+        
+        print(f"操作指南滾動: offset={self.scroll_offset}, max={max_scroll}")
+
     def toggle_visibility(self):
         """
         切換顯示/隱藏狀態\n
         """
         self.is_visible = not self.is_visible
+        if self.is_visible:
+            self.scroll_offset = 0  # 顯示時重置滾動位置
         print(f"操作指南 {'顯示' if self.is_visible else '隱藏'}")
 
     def show(self):
@@ -135,6 +169,7 @@ class OperationGuideUI:
         顯示操作指南\n
         """
         self.is_visible = True
+        self.scroll_offset = 0  # 顯示時重置滾動位置
 
     def hide(self):
         """
@@ -182,22 +217,36 @@ class OperationGuideUI:
         pygame.draw.rect(screen, (30, 30, 30), main_rect)
         pygame.draw.rect(screen, self.border_color, main_rect, 3)
         
-        # 繪製內容
-        current_y = self.y + 20
-        line_height = 20  # 減少行高讓內容更緊湊
+        # 繪製標題（固定在頂部）
+        title_line = self.guide_content[0]  # "🎮 遊戲操作指南"
+        title_surface = self.font_manager.render_text(title_line, 24, (255, 215, 0))
+        title_x = self.x + (self.width - title_surface.get_width()) // 2
+        title_y = self.y + 15
+        screen.blit(title_surface, (title_x, title_y))
         
-        for line in self.guide_content:
+        # 繪製滾動指示（如果需要滾動）
+        if len(self.guide_content) > self.max_visible_lines:
+            self._draw_scroll_indicators(screen)
+        
+        # 計算內容繪製區域
+        content_start_y = self.y + 50  # 標題下方開始
+        
+        # 計算要顯示的內容範圍（跳過標題）
+        content_lines = self.guide_content[1:]  # 跳過標題
+        start_index = self.scroll_offset
+        end_index = min(start_index + self.max_visible_lines, len(content_lines))
+        visible_lines = content_lines[start_index:end_index]
+        
+        # 繪製可見內容
+        current_y = content_start_y
+        for line in visible_lines:
             if line == "":
                 # 空行，減少間距
-                current_y += line_height // 3
+                current_y += self.line_height // 3
                 continue
             
             # 根據內容類型設定顏色和字體大小
-            if line.startswith("🎮"):
-                # 標題
-                text_color = (255, 215, 0)  # 金色
-                font_size = 24
-            elif line.startswith(("📍", "🎯", "📦", "🦌", "🌱", "🚂", "🏠", "🌍", "💡", "⚙️")):
+            if line.startswith(("📍", "🎯", "📦", "🦌", "🌱", "🚂", "🏠", "🌍", "💡", "⚙️", "📱", " NPC", "🏪", "🔌", "🖱️")):
                 # 章節標題
                 text_color = (100, 149, 237)  # 淺藍色
                 font_size = 18
@@ -214,30 +263,60 @@ class OperationGuideUI:
                 text_color = (255, 255, 255)  # 白色
                 font_size = 16
             
-            # 渲染文字（強制使用字體管理器，移除fallback機制）
+            # 渲染文字
             text_surface = self.font_manager.render_text(line, font_size, text_color)
             
             # 計算文字位置
-            if line.startswith("🎮"):
-                # 標題置中
-                text_x = self.x + (self.width - text_surface.get_width()) // 2
-            elif line.startswith("按0鍵或\\鍵或ESC關閉此畫面"):
+            if line.startswith("按0鍵或\\鍵或ESC關閉此畫面"):
                 # 底部說明置中
                 text_x = self.x + (self.width - text_surface.get_width()) // 2
             else:
                 # 其他內容左對齊
                 text_x = self.x + 20
             
-            # 檢查是否超出視窗範圍
-            if current_y + line_height > self.y + self.height - 30:
-                # 如果內容太多，顯示省略符號（強制使用字體管理器）
-                ellipsis_text = self.font_manager.render_text("...(更多內容)", 14, (150, 150, 150))
-                screen.blit(ellipsis_text, (text_x, current_y))
+            # 檢查是否超出內容區域
+            if current_y + self.line_height > self.y + self.height - 30:
                 break
             
             # 繪製文字
             screen.blit(text_surface, (text_x, current_y))
-            current_y += line_height
+            current_y += self.line_height
+    
+    def _draw_scroll_indicators(self, screen):
+        """
+        繪製滾動條和滾動指示器\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        """
+        # 滾動條位置和尺寸
+        scrollbar_x = self.x + self.width - 20
+        scrollbar_y = self.y + 50
+        scrollbar_width = 12
+        scrollbar_height = self.height - 80
+        
+        # 繪製滾動條背景
+        pygame.draw.rect(screen, (50, 50, 50), 
+                        (scrollbar_x, scrollbar_y, scrollbar_width, scrollbar_height))
+        
+        # 計算滾動手柄的位置和大小
+        content_lines = len(self.guide_content) - 1  # 減去標題行
+        if content_lines > self.max_visible_lines:
+            handle_height = max(20, int(scrollbar_height * self.max_visible_lines / content_lines))
+            handle_y = scrollbar_y + int(scrollbar_height * self.scroll_offset / content_lines)
+            
+            # 繪製滾動手柄
+            pygame.draw.rect(screen, (150, 150, 150),
+                            (scrollbar_x + 1, handle_y, scrollbar_width - 2, handle_height))
+        
+        # 繪製滾動提示文字
+        if self.scroll_offset > 0:
+            up_text = self.font_manager.render_text("↑ 向上滾動", 12, (180, 180, 180))
+            screen.blit(up_text, (self.x + 20, self.y + self.height - 45))
+        
+        if self.scroll_offset < content_lines - self.max_visible_lines:
+            down_text = self.font_manager.render_text("↓ 向下滾動", 12, (180, 180, 180))
+            screen.blit(down_text, (self.x + 20, self.y + self.height - 25))
 
     def update(self, dt):
         """

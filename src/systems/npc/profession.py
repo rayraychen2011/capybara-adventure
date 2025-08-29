@@ -49,19 +49,19 @@ class ProfessionData:
 
     # 各職業的預定數量 (根據規格書)
     PROFESSION_COUNTS = {
-        Profession.FARMER: 100,
-        Profession.PRIEST: 2,
-        Profession.NUN: 48,
-        Profession.DOCTOR: 10,
-        Profession.NURSE: 40,
-        Profession.GUN_SHOP_WORKER: 20,
-        Profession.STREET_VENDOR: 10,
-        Profession.CHEF: 20,  # 替換釣魚店員工
-        Profession.CONVENIENCE_STORE_WORKER: 30,
-        Profession.TEACHER: 30,  # 替換電力系統員工
-        Profession.HUNTER: 20,
-        Profession.RESIDENT: 150,  # 一般居民
-        Profession.ARTIST: 100,  # 替換部落成員
+        Profession.FARMER: 50,  # 50名農夫工作在火車站1旁農地
+        Profession.PRIEST: 0,
+        Profession.NUN: 0,
+        Profession.DOCTOR: 0,
+        Profession.NURSE: 0,
+        Profession.GUN_SHOP_WORKER: 0,
+        Profession.STREET_VENDOR: 0,
+        Profession.CHEF: 0,
+        Profession.CONVENIENCE_STORE_WORKER: 0,
+        Profession.TEACHER: 0,
+        Profession.HUNTER: 0,
+        Profession.RESIDENT: 49,  # 49名無職業居民在鎮上閒晃
+        Profession.ARTIST: 0,
     }
 
     # 職業工作場所對應
@@ -84,10 +84,12 @@ class ProfessionData:
     # 職業的工作時間表 (小時制，24小時)
     PROFESSION_SCHEDULES = {
         Profession.FARMER: {
-            "work_start": 6,
-            "work_end": 18,
-            "break_start": 12,
-            "break_end": 13,
+            "work_start": 9,  # 09:00 開始集合
+            "work_end": 17,   # 17:00 結束工作
+            "gathering_time": 9,  # 09:00 集合時間
+            "transport_time": 9.33,  # 09:20 傳送時間 (9 + 20/60 = 9.33)
+            "break_start": None,  # 農夫工作期間不休息
+            "break_end": None,
         },
         Profession.PRIEST: {
             "work_start": 8,

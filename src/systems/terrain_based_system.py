@@ -110,6 +110,7 @@ class TerrainBasedSystem:
         # 分析地形並配置系統
         self._analyze_terrain()
         self._setup_residential_areas()
+        self._setup_vegetable_gardens()  # 設置蔬果園 - 必須在住宅區設置後執行
         self._setup_commercial_areas()
         self._setup_farm_areas()  # 新增農地設置
         self._setup_forest_areas()
@@ -273,10 +274,10 @@ class TerrainBasedSystem:
         # 創建蔬果園
         garden = {
             'position': (tile_world_x, tile_world_y),
-            'size': self.tile_size,
+            'size': 8,  # 縮小農作物大小到8像素
             'color': (34, 139, 34),  # 森林綠
             'growth_stage': 0,  # 0-3 生長階段
-            'harvest_ready': False,
+            'harvest_ready': random.choice([True, False]),  # 隨機初始狀態
             'last_harvest_day': -1,  # 上次收穫的遊戲日
             'crops': [],
             'partial': partial,  # 是否為部分蔬果園
@@ -284,10 +285,10 @@ class TerrainBasedSystem:
         }
         
         # 在蔬果園內隨機放置農作物
-        crop_count = 6 if not partial else 3  # 部分蔬果園較少農作物
+        crop_count = 4 if not partial else 2  # 減少農作物數量
         for i in range(crop_count):
-            crop_x = tile_world_x + random.randint(5, self.tile_size - 10)
-            crop_y = tile_world_y + random.randint(5, self.tile_size - 10)
+            crop_x = tile_world_x + random.randint(8, self.tile_size - 8)  # 保持在格子邊界內
+            crop_y = tile_world_y + random.randint(8, self.tile_size - 8)
             
             # 隨機農作物顏色
             crop_colors = [(255, 0, 0), (255, 165, 0), (255, 255, 0), (0, 255, 0)]
@@ -463,14 +464,18 @@ class TerrainBasedSystem:
             print("警告：找不到住宅區格子來放置蔬果園")
             return
         
-        # 計算住宅數量和剩餘空間
+        # 計算實際住宅數量
+        actual_housing_count = len([b for b in self.buildings if b.building_type == "house"])
         total_residential_slots = len(residential_tiles) * 4  # 每格4個位置
-        used_housing_slots = 100  # 總共100個房子
-        remaining_slots = total_residential_slots - used_housing_slots
+        remaining_slots = max(0, total_residential_slots - actual_housing_count)
         
-        # 在剩餘空間中創建蔬果園
-        gardens_to_create = min(VEGETABLE_GARDEN_COUNT, remaining_slots)
+        print(f"住宅區統計: 格子數={len(residential_tiles)}, 總位置={total_residential_slots}, 已建房屋={actual_housing_count}, 剩餘位置={remaining_slots}")
+        
+        # 在剩餘空間中創建蔬果園，但保證至少創建幾個
+        gardens_to_create = max(5, min(VEGETABLE_GARDEN_COUNT, remaining_slots))  # 至少5個蔬果園
         garden_count = 0
+        
+        print(f"計劃創建 {gardens_to_create} 個蔬果園")
         
         for tile_x, tile_y in residential_tiles:
             if garden_count >= gardens_to_create:
@@ -482,8 +487,8 @@ class TerrainBasedSystem:
             
             # 檢查這個格子是否還有空間（不與現有建築重疊）
             available_positions = []
-            garden_spacing = 5
-            garden_size = 15
+            garden_spacing = 2  # 縮小間距
+            garden_size = 8     # 縮小蔬果園到8像素（一格內）
             
             # 在格子內尋找可用位置
             for row in range(2):
@@ -731,7 +736,7 @@ class TerrainBasedSystem:
     def _setup_water_areas(self):
         """
         設置水體區域 - 地形編碼2\n
-        移植原湖泊系統到對應地形格子（移除釣魚功能）\n
+        純水體區域，不生成任何物件或資源\n
         """
         print("設置水體區域...")
         
@@ -747,48 +752,15 @@ class TerrainBasedSystem:
                     water_area = {
                         'grid_pos': (x, y),
                         'world_bounds': (tile_world_x, tile_world_y, self.tile_size, self.tile_size),
-                        'resources': []
+                        'resources': []  # 保持空列表，水體上不生成任何資源
                     }
                     
-                    # 在格子邊緣生成水邊資源 (1-2個)
-                    num_resources = random.randint(1, 2)
-                    for _ in range(num_resources):
-                        # 隨機選擇邊緣位置
-                        side = random.choice(['top', 'bottom', 'left', 'right'])
-                        if side == 'top':
-                            resource_x = tile_world_x + random.randint(2, self.tile_size - 2)
-                            resource_y = tile_world_y + 1
-                        elif side == 'bottom':
-                            resource_x = tile_world_x + random.randint(2, self.tile_size - 2)
-                            resource_y = tile_world_y + self.tile_size - 1
-                        elif side == 'left':
-                            resource_x = tile_world_x + 1
-                            resource_y = tile_world_y + random.randint(2, self.tile_size - 2)
-                        else:  # right
-                            resource_x = tile_world_x + self.tile_size - 1
-                            resource_y = tile_world_y + random.randint(2, self.tile_size - 2)
-                        
-                        resource_type = random.choice([
-                            {'name': '水草', 'color': (0, 100, 0), 'value': 3},
-                            {'name': '貝殼', 'color': (255, 192, 203), 'value': 8},
-                            {'name': '漂流木', 'color': (139, 69, 19), 'value': 5}
-                        ])
-                        
-                        resource = {
-                            'name': resource_type['name'],
-                            'position': (resource_x, resource_y),
-                            'color': resource_type['color'],
-                            'value': resource_type['value'],
-                            'collected': False,
-                            'rect': pygame.Rect(resource_x - 4, resource_y - 4, 8, 8)
-                        }
-                        water_area['resources'].append(resource)
-                        self.water_resources.append(resource)
+                    # 移除水邊資源生成邏輯 - 水體保持純淨，不生成任何物件
                     
                     self.water_areas.append(water_area)
                     water_count += 1
         
-        print(f"水體區域設置完成，共創建 {water_count} 個水體格子")
+        print(f"水體區域設置完成，共創建 {water_count} 個純淨水體格子")
 
     def _setup_railway_system(self):
         """
@@ -899,7 +871,7 @@ class TerrainBasedSystem:
     def can_move_to_position(self, world_x, world_y, entity_rect):
         """
         檢查實體是否可以移動到指定位置\n
-        （NPC不能到鐵軌上，但玩家可以通過斑馬線）\n
+        玩家現在可以在任何地形上移動，包括水體、樹木、建築物等\n
         \n
         參數:\n
         world_x (float): 目標世界座標 X\n
@@ -907,33 +879,14 @@ class TerrainBasedSystem:
         entity_rect (pygame.Rect): 實體的碰撞矩形\n
         \n
         回傳:\n
-        bool: 如果可以移動則回傳 True\n
+        bool: 總是回傳 True，玩家可以自由移動\n
         """
-        # 檢查水域碰撞
-        if self.check_water_collision(world_x, world_y):
-            return False
-        
-        # 創建目標位置的矩形
-        target_rect = pygame.Rect(world_x - entity_rect.width//2, world_y - entity_rect.height//2, 
-                                entity_rect.width, entity_rect.height)
-        
-        # 檢查樹木碰撞
-        if self.check_tree_collision(target_rect):
-            return False
-        
-        # 檢查建築物碰撞
-        if self.check_building_collision(target_rect):
-            return False
-        
-        # 檢查鐵軌碰撞（NPC不能上鐵軌）
-        if self.railway_system.check_railway_collision(target_rect):
-            return False
-        
+        # 玩家可以在任何地形上移動，不再進行碰撞檢測
         return True
 
     def draw_terrain_layer(self, screen, camera_x, camera_y):
         """
-        繪製地形層 (背景)\n
+        繪製地形層 (背景) - 隱藏格線\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -953,16 +906,20 @@ class TerrainBasedSystem:
                     terrain_code = self.map_data[y][x]
                     color = self.terrain_loader.get_terrain_color(terrain_code)
                     
+                    # 如果是水體（地形代碼2），確保使用藍色
+                    if terrain_code == 2:
+                        color = (30, 144, 255)  # 道奇藍色，更明顯的水體顏色
+                    
                     # 計算螢幕座標
                     screen_x = x * self.tile_size - camera_x
                     screen_y = y * self.tile_size - camera_y
                     
-                    # 繪製地形格子
+                    # 繪製地形格子（不繪製邊框）
                     rect = pygame.Rect(screen_x, screen_y, self.tile_size, self.tile_size)
                     pygame.draw.rect(screen, color, rect)
                     
-                    # 繪製格子邊框 (淡色)
-                    pygame.draw.rect(screen, (128, 128, 128), rect, 1)
+                    # 移除格子邊框繪製 - 隱藏格線
+                    # pygame.draw.rect(screen, (128, 128, 128), rect, 1)
 
     def draw_forest_elements(self, screen, camera_x, camera_y):
         """
@@ -1006,7 +963,7 @@ class TerrainBasedSystem:
 
     def draw_water_elements(self, screen, camera_x, camera_y):
         """
-        繪製水體元素（移除釣魚點）\n
+        繪製水體元素 - 純淨的水體，不繪製任何額外物件\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -1020,7 +977,7 @@ class TerrainBasedSystem:
                 wy + wh < camera_y or wy > camera_y + screen.get_height()):
                 continue
             
-            # 繪製水波效果
+            # 繪製簡單的水波效果（可選）
             for i in range(3):
                 wave_y = wy + (i + 1) * (wh / 4)
                 screen_wave_y = wave_y - camera_y
@@ -1028,16 +985,7 @@ class TerrainBasedSystem:
                                (wx - camera_x, screen_wave_y), 
                                (wx + ww - camera_x, screen_wave_y), 1)
             
-            # 繪製水邊資源
-            for resource in water_area['resources']:
-                if resource['collected']:
-                    continue
-                    
-                rx, ry = resource['position']
-                screen_x = rx - camera_x
-                screen_y = ry - camera_y
-                
-                pygame.draw.circle(screen, resource['color'], (int(screen_x), int(screen_y)), 4)
+            # 移除水邊資源繪製 - 保持水體純淨
 
     def draw_vegetable_gardens(self, screen, camera_x, camera_y):
         """
@@ -1578,6 +1526,10 @@ class TerrainBasedSystem:
             
             # 更新所有蔬果園
             for garden in self.vegetable_gardens:
+                # 確保 last_harvest_day 屬性存在
+                if 'last_harvest_day' not in garden:
+                    garden['last_harvest_day'] = -1
+                
                 if garden['last_harvest_day'] < current_day:
                     # 重置農作物為可收穫狀態
                     garden['harvest_ready'] = True

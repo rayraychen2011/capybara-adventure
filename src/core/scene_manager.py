@@ -1,6 +1,7 @@
 ######################載入套件######################
 import pygame
 from config.settings import *
+from src.core.state_manager import GameState  # 新增狀態導入
 
 
 ######################場景基底類別######################
@@ -127,6 +128,9 @@ class SceneManager:
 
         # 場景切換是否正在進行
         self.transitioning = False
+        
+        # 狀態管理器引用（用於檢查暫停狀態）
+        self.state_manager = None
 
     def register_scene(self, scene_name, scene_instance):
         """
@@ -192,10 +196,18 @@ class SceneManager:
         \n
         每幀調用一次，更新當前活躍場景的邏輯\n
         同時檢查是否有場景切換請求\n
+        在暫停狀態下會跳過更新以實現畫面凍結\n
         \n
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
+        # 檢查是否在暫停狀態（如果有狀態管理器的話）
+        if (self.state_manager and 
+            hasattr(self.state_manager, 'is_state') and 
+            self.state_manager.is_state(GameState.PAUSED)):
+            # 在暫停狀態下不更新場景，保持畫面凍結
+            return
+        
         # 如果有當前場景，就更新它
         if self.current_scene and self.current_scene.is_active:
             self.current_scene.update(dt)
@@ -284,6 +296,17 @@ class SceneManager:
         list: 包含所有場景名稱的列表\n
         """
         return list(self.scenes.keys())
+
+    def set_state_manager(self, state_manager):
+        """
+        設定狀態管理器引用\n
+        \n
+        讓場景管理器能夠檢查遊戲狀態，實現暫停時的凍結功能\n
+        \n
+        參數:\n
+        state_manager (StateManager): 狀態管理器實例\n
+        """
+        self.state_manager = state_manager
 
     def cleanup(self):
         """

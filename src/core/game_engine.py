@@ -69,6 +69,9 @@ class GameEngine:
 
         # 建立場景管理器
         self.scene_manager = SceneManager()
+        
+        # 讓場景管理器能夠檢查遊戲狀態（用於暫停凍結功能）
+        self.scene_manager.set_state_manager(self.state_manager)
 
         # 註冊狀態變更回調
         self.state_manager.register_state_change_callback(
@@ -387,20 +390,21 @@ class GameEngine:
 
     def update(self, dt):
         """
-        更新遊戲邏輯 - 已優化輸入響應順序\n
+        更新遊戲邏輯 - 已優化輸入響應順序並支援暫停凍結\n
         \n
         每幀調用一次，更新所有遊戲系統\n
-        優先處理玩家輸入和場景更新以提升操控響應性\n
-        其他系統使用較低頻率更新以節省效能\n
+        在暫停狀態下會凍結所有遊戲邏輯，只保持UI更新\n
         \n
         參數:\n
         dt (float): 與上一幀的時間差，單位為秒\n
         """
-        # 最高優先級：場景管理器（包含玩家輸入處理）
-        self.scene_manager.update(dt)
-
-        # 根據遊戲狀態執行特定的更新邏輯
+        # 根據遊戲狀態執行對應的更新邏輯
         if self.state_manager.is_state(GameState.PLAYING):
+            # 遊戲進行中：更新所有系統
+            
+            # 最高優先級：場景管理器（包含玩家輸入處理）
+            self.scene_manager.update(dt)
+            
             # 中優先級：核心遊戲系統
             frame_count = int(pygame.time.get_ticks() / 16.67)  # 假設60FPS
 
@@ -414,9 +418,14 @@ class GameEngine:
                 self.time_display.update(dt * 4)
 
         elif self.state_manager.is_state(GameState.PAUSED):
-            # 暫停狀態的更新（通常不更新遊戲邏輯）
-            # 但仍需要更新 UI 顯示
+            # 暫停狀態：凍結所有遊戲邏輯，只更新必要的UI
+            # 不更新場景管理器，讓所有遊戲物件保持靜止
+            # 只更新時間顯示UI（顯示暫停前的時間）
             self.time_display.update(dt)
+            
+        else:
+            # 其他狀態（如選單）：只更新場景
+            self.scene_manager.update(dt)
 
     def draw(self):
         """
@@ -432,8 +441,8 @@ class GameEngine:
         # 讓場景管理器繪製當前場景
         self.scene_manager.draw(self.screen)
 
-        # 繪製時間顯示 UI（在遊戲進行中才顯示）
-        if self.state_manager.is_state(GameState.PLAYING):
+        # 繪製時間顯示 UI（在遊戲進行中和暫停時都顯示）
+        if self.state_manager.is_state(GameState.PLAYING) or self.state_manager.is_state(GameState.PAUSED):
             self.time_display.draw(self.screen, self.time_manager)
 
         # 根據遊戲狀態繪製額外的 UI

@@ -472,7 +472,7 @@ class TileMapManager:
         """
         return self.is_npc_walkable(world_x, world_y)
     
-    def draw_debug(self, screen, camera_x, camera_y, show_grid=True):
+    def draw_debug(self, screen, camera_x, camera_y, show_grid=False):
         """
         繪製除錯信息（格子地圖可視化）\n
         

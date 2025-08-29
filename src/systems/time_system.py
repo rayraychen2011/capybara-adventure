@@ -86,6 +86,9 @@ class TimeManager:
         self.ambient_light = 1.0  # 環境光強度 (0.0-1.0)
         self.sky_color = BACKGROUND_COLOR
 
+        # 天氣系統引用（用於環境效果修正）
+        self.weather_system = None
+
         # 時間相關的遊戲狀態
         self.is_work_day = True  # 今天是否為工作日
         self.shops_open = True  # 商店是否營業
@@ -218,6 +221,15 @@ class TimeManager:
 
         # 根據時間設定天空顏色
         self._update_sky_color()
+
+    def set_weather_system(self, weather_system):
+        """
+        設定天氣系統引用\n
+        \n
+        參數:\n
+        weather_system (WeatherEffectSystem): 天氣效果系統\n
+        """
+        self.weather_system = weather_system
 
     def _update_sky_color(self):
         """
@@ -403,6 +415,9 @@ class TimeManager:
         回傳:\n
         float: 環境光強度 (0.0-1.0)\n
         """
+        # 如果有天氣系統，應用天氣修正
+        if self.weather_system:
+            return self.weather_system.get_modified_ambient_light(self.ambient_light)
         return self.ambient_light
 
     def get_sky_color(self):
@@ -412,6 +427,9 @@ class TimeManager:
         回傳:\n
         tuple: RGB 顏色值\n
         """
+        # 如果有天氣系統，應用天氣修正
+        if self.weather_system:
+            return self.weather_system.get_modified_sky_color(self.sky_color)
         return self.sky_color
 
     def get_debug_info(self):

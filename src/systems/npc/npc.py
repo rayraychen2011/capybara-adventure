@@ -79,6 +79,12 @@ class NPC:
         self.home_position = initial_position
         self.current_work_area = None  # 電力工人需要負責的區域
 
+        # 農夫工作相關屬性
+        self.is_farmer = False  # 是否為農夫
+        self.work_phase = None  # 工作階段
+        self.can_teleport = False  # 是否可以傳送
+        self.is_working_farmer = False  # 是否為工作農夫
+
         # 生活時間表
         self.schedule = ProfessionData.get_profession_schedule(profession)
         self.current_hour = 8  # 初始時間設為早上8點
@@ -629,8 +635,9 @@ class NPC:
 
     def _check_collision_with_environment(self):
         """
-        檢查 NPC 是否與環境物件（建築物、水域、鐵軌）發生碰撞\n
-        根據新需求：NPC 只能從斑馬線處通過鐵軌，且永遠不會到湖泊地形\n
+        檢查 NPC 是否與環境物件（建築物、水域、鐵軌、草地）發生碰撞\n
+        根據新需求：NPC 只能從斑馬線處通過鐵軌，且永遠不會到湖泊地形和草地\n
+        但農夫可以在農地上移動\n
         \n
         回傳:\n
         bool: True 表示發生碰撞，False 表示沒有碰撞\n
@@ -640,11 +647,28 @@ class NPC:
             self.x - self.size, self.y - self.size, self.size * 2, self.size * 2
         )
 
-        # 檢查地形類型，避開湖泊（地形代碼2）
+        # 檢查地形類型，避開湖泊（地形代碼2）和草地（地形代碼0）
         if hasattr(self, "terrain_system") and self.terrain_system:
             terrain_type = self.terrain_system.get_terrain_at_position(self.x, self.y)
             if terrain_type == 2:  # 湖泊地形
                 return True  # 避開湖泊
+            if terrain_type == 0:  # 草地地形 - 所有NPC都不能在草地上
+                return True  # 避開草地
+            
+            # 檢查農地地形（地形代碼8）- 只有農夫可以進入
+            if terrain_type == 8:  # 農地地形
+                # 檢查是否為農夫
+                try:
+                    from src.systems.npc.profession import Profession
+                    if hasattr(self, 'profession') and self.profession == Profession.FARMER:
+                        # 農夫可以在農地上移動，不產生碰撞
+                        pass
+                    else:
+                        # 非農夫NPC不能在農地上
+                        return True
+                except ImportError:
+                    # 如果無法導入職業枚舉，非農夫NPC不能在農地上
+                    return True
                 
             # 檢查水域碰撞（NPC 不能進入水體）
             if self.terrain_system.check_water_collision(self.x, self.y):
@@ -797,6 +821,10 @@ class NPC:
         回傳:\n
         bool: 是否成功使用火車通勤\n
         """
+        # 檢查是否為農夫且不允許傳送
+        if hasattr(self, 'is_farmer') and self.is_farmer and not getattr(self, 'can_teleport', True):
+            return False  # 農夫在工作時間不能使用火車傳送
+        
         if not self.terrain_system or not hasattr(self.terrain_system, 'railway_system'):
             return False
         

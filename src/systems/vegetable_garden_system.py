@@ -35,8 +35,8 @@ class VegetableGardenSystem:
         
         # 採集設定
         self.harvest_reward = 5  # 採摘獎勵金額
-        self.regrow_time = 300   # 重新生長時間（秒）
-        self.interaction_range = 25  # 互動範圍
+        self.regrow_time = 24   # 重新生長時間（現實秒數，對應遊戲內一天）
+        self.interaction_range = 25  # 互動範圍（自動採收檢測範圍）
         
         # 蔬果類型和顏色
         self.vegetable_types = [
@@ -55,45 +55,31 @@ class VegetableGardenSystem:
 
     def initialize_gardens(self):
         """
-        初始化蔬果園位置 - 在公園區域放置蔬果園\n
+        初始化蔬果園位置 - 從地形系統取得已創建的蔬果園\n
         """
         if not self.terrain_system:
             print("警告：沒有地形系統，無法放置蔬果園")
             return
             
         self.vegetable_gardens.clear()
-        garden_id = 1
         
-        # 遍歷地圖，在公園地形上放置蔬果園
-        for y in range(self.terrain_system.map_height):
-            for x in range(self.terrain_system.map_width):
-                terrain_code = self.terrain_system.map_data[y][x]
+        # 使用地形系統中已創建的蔬果園
+        if hasattr(self.terrain_system, 'vegetable_gardens'):
+            for i, garden_data in enumerate(self.terrain_system.vegetable_gardens):
+                # 轉換為蔬果園系統需要的格式
+                garden = {
+                    "id": i + 1,
+                    "position": garden_data['position'],
+                    "vegetable_type": random.choice(self.vegetable_types),
+                    "is_ready": garden_data.get('harvest_ready', True),  # 使用地形系統的狀態
+                    "last_harvest_time": 0,  # 上次採摘時間
+                    "size": garden_data.get('size', 10),  # 使用地形系統的大小
+                    "terrain_garden": garden_data  # 保存對原始數據的引用
+                }
                 
-                # 檢查是否為公園地形
-                if terrain_code == 7:  # 7=公園
-                    # 隨機決定是否在此位置放置蔬果園（30%機率）
-                    if random.random() < 0.3:
-                        # 計算世界座標
-                        world_x = x * self.terrain_system.tile_size + self.terrain_system.tile_size // 2
-                        world_y = y * self.terrain_system.tile_size + self.terrain_system.tile_size // 2
-                        
-                        # 隨機選擇蔬果類型
-                        vegetable_type = random.choice(self.vegetable_types)
-                        
-                        # 創建蔬果園
-                        garden = {
-                            "id": garden_id,
-                            "position": (world_x, world_y),
-                            "vegetable_type": vegetable_type,
-                            "is_ready": True,  # 初始狀態為可採摘
-                            "last_harvest_time": 0,  # 上次採摘時間
-                            "size": random.randint(8, 12),  # 蔬果大小
-                        }
-                        
-                        self.vegetable_gardens.append(garden)
-                        garden_id += 1
+                self.vegetable_gardens.append(garden)
         
-        print(f"已放置 {len(self.vegetable_gardens)} 個蔬果園")
+        print(f"從地形系統載入 {len(self.vegetable_gardens)} 個蔬果園")
 
     def update(self, dt):
         """
@@ -111,6 +97,35 @@ class VegetableGardenSystem:
                 if current_time - garden["last_harvest_time"] >= self.regrow_time:
                     garden["is_ready"] = True
                     print(f"蔬果園 {garden['id']} 的{garden['vegetable_type']['name']}重新生長完成")
+
+    def check_auto_harvest(self, player_position, player):
+        """
+        檢查玩家位置是否有成熟蔬果可自動採收\n
+        \n
+        參數:\n
+        player_position (tuple): 玩家位置\n
+        player (Player): 玩家物件\n
+        \n
+        回傳:\n
+        dict: 採收結果，如果沒有可採收的蔬果則返回 None\n
+        """
+        # 尋找互動範圍內的蔬果園
+        nearby_gardens = self.get_nearby_gardens(player_position, self.interaction_range)
+        
+        # 篩選出可採摘的蔬果園
+        harvestable_gardens = [garden for garden in nearby_gardens if garden["is_ready"]]
+        
+        if not harvestable_gardens:
+            return None
+        
+        # 選擇最近的蔬果園進行自動採收
+        target_garden = min(
+            harvestable_gardens,
+            key=lambda g: self._calculate_distance(player_position, g["position"])
+        )
+        
+        # 執行自動採摘
+        return self._harvest_garden(target_garden, player)
 
     def attempt_harvest(self, player_position, player):
         """
@@ -162,6 +177,11 @@ class VegetableGardenSystem:
         garden["is_ready"] = False
         garden["last_harvest_time"] = time.time()
         
+        # 同步更新地形系統中的蔬果園狀態
+        if "terrain_garden" in garden:
+            garden["terrain_garden"]["harvest_ready"] = False
+            garden["terrain_garden"]["last_harvest_time"] = time.time()
+        
         # 給玩家金錢獎勵
         if hasattr(player, 'money'):
             player.money += self.harvest_reward
@@ -170,7 +190,7 @@ class VegetableGardenSystem:
         self.total_harvested += 1
         self.total_money_earned += self.harvest_reward
         
-        print(f"採摘 {vegetable_name} 獲得 {self.harvest_reward} 元")
+        print(f"🌱 自動採摘 {vegetable_name} 獲得 {self.harvest_reward} 元")
         
         return {
             "success": True,
@@ -248,26 +268,27 @@ class VegetableGardenSystem:
         position (tuple): 螢幕位置\n
         """
         x, y = position
-        size = garden["size"]
+        # 將農作物圓形半徑縮小為 4，不再使用garden["size"]
+        crop_radius = 4
         vegetable_type = garden["vegetable_type"]
         is_ready = garden["is_ready"]
         
         if is_ready:
             # 可採摘狀態：使用蔬果的原始顏色
             color = vegetable_type["color"]
-            # 繪製蔬果（圓形）
-            pygame.draw.circle(screen, color, (int(x), int(y)), size)
+            # 繪製蔬果（圓形，縮小半徑）
+            pygame.draw.circle(screen, color, (int(x), int(y)), crop_radius)
             # 繪製邊框
-            pygame.draw.circle(screen, (0, 0, 0), (int(x), int(y)), size, 2)
+            pygame.draw.circle(screen, (0, 0, 0), (int(x), int(y)), crop_radius, 2)
         else:
             # 未成熟狀態：使用灰色表示
             color = (100, 100, 100)
-            pygame.draw.circle(screen, color, (int(x), int(y)), size - 2)
-            pygame.draw.circle(screen, (50, 50, 50), (int(x), int(y)), size - 2, 1)
+            pygame.draw.circle(screen, color, (int(x), int(y)), crop_radius - 2)
+            pygame.draw.circle(screen, (50, 50, 50), (int(x), int(y)), crop_radius - 2, 1)
 
     def draw_interaction_hint(self, screen, player_position, camera_offset=(0, 0)):
         """
-        繪製互動提示\n
+        繪製自動採收提示（現在只顯示視覺標記，不需要按鍵提示）\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -286,14 +307,14 @@ class VegetableGardenSystem:
                 screen_x = gx - camera_x
                 screen_y = gy - camera_y
                 
-                # 繪製互動提示圓圈
-                pygame.draw.circle(screen, (255, 255, 255), (int(screen_x), int(screen_y)), 
-                                 garden["size"] + 5, 2)
+                # 繪製自動採收範圍提示圓圈（縮小尺寸）
+                pygame.draw.circle(screen, (50, 255, 50), (int(screen_x), int(screen_y)), 
+                                 10, 2)  # 固定半徑為 10
                 
-                # 顯示按鍵提示
-                font = self.font_manager.get_font(20)
-                hint_text = font.render("按 E 採摘", True, (255, 255, 255))
-                hint_rect = hint_text.get_rect(center=(int(screen_x), int(screen_y) - 20))
+                # 顯示自動採收提示（可選）
+                font = self.font_manager.get_font(16)
+                hint_text = font.render("🌱 自動採收", True, (50, 255, 50))
+                hint_rect = hint_text.get_rect(center=(int(screen_x), int(screen_y) - 25))
                 screen.blit(hint_text, hint_rect)
 
     def get_statistics(self):

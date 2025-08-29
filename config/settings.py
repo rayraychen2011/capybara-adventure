@@ -89,6 +89,9 @@ PLAYER_SPEED = 200.0  # 調整為合適的移動速度（每秒移動像素數�
 # 玩家奔跑速度（Shift 鍵加速）
 PLAYER_RUN_SPEED = 300.0  # 奔跑時的移動速度
 
+# 載具移動速度（玩家和 NPC 使用載具時的速度）
+VEHICLE_SPEED = 400.0  # 載具移動速度（像素/秒）
+
 # 玩家角色的尺寸 - 寬度（縮小為原來的1/4以配合建築系統）
 PLAYER_WIDTH = 8
 
@@ -282,22 +285,22 @@ VEGETABLE_GARDEN_COLOR = (50, 205, 50)  # 蔬果園顏色 - 綠色
 TOTAL_TOWN_NPCS = 99  # 固定為99個NPC
 TOTAL_TRIBE_NPCS = 0  # 刪除部落NPC（依據需求）
 
-# 小鎮NPC職業分配（重新分配以配合新的NPC數量）
+# 小鎮NPC職業分配（根據農夫工作需求重新分配）
 # 每個住宅最多3個NPC（家庭成員）
 NPCS_PER_HOUSE = 3  # 每個住宅的NPC數量
-FARMER_COUNT = 15  # 農夫（增加，因為要在農田工作）
-DOCTOR_COUNT = 6  # 醫生
-NURSE_COUNT = 8  # 護士
-GUN_SHOP_STAFF_COUNT = 5  # 槍械店員工
-VENDOR_COUNT = 8  # 路邊小販
+FARMER_COUNT = 50  # 農夫（50名工作在火車站1旁農地）
+DOCTOR_COUNT = 0  # 醫生（暫停其他職業）
+NURSE_COUNT = 0  # 護士（暫停其他職業）
+GUN_SHOP_STAFF_COUNT = 0  # 槍械店員工（暫停其他職業）
+VENDOR_COUNT = 0  # 路邊小販（暫停其他職業）
 STREET_VENDOR_COUNT = VENDOR_COUNT  # 為了相容性保留兩個名稱
-CONVENIENCE_STAFF_COUNT = 10  # 便利商店員工
-CHEF_COUNT = 8  # 廚師（替換釣魚店員工）
-TEACHER_COUNT = 8  # 教師（替換電力系統員工）
-HUNTER_COUNT = 8  # 獵人
-ARTIST_COUNT = 15  # 藝術家（替換部落成員）
-# 其他職業，補足到99個NPC
-OTHER_PROFESSIONS_COUNT = 8  # 其他居民（重新計算後的數量）
+CONVENIENCE_STAFF_COUNT = 0  # 便利商店員工（暫停其他職業）
+CHEF_COUNT = 0  # 廚師（暫停其他職業）
+TEACHER_COUNT = 0  # 教師（暫停其他職業）
+HUNTER_COUNT = 0  # 獵人（暫停其他職業）
+ARTIST_COUNT = 0  # 藝術家（暫停其他職業）
+# 其他職業：49名無職業NPC在鎮上閒晃
+OTHER_PROFESSIONS_COUNT = 49  # 無職業一般居民
 
 ######################NPC移動設定######################
 # NPC 移動速度 - 與玩家移動速度相同
@@ -306,27 +309,12 @@ NPC_SPEED = PLAYER_SPEED  # NPC 和玩家使用相同的移動速度
 # NPC 車輛使用設定
 NPC_COMMUTE_DISTANCE_THRESHOLD = 200  # NPC 工作場所距離超過此值時會使用車輛
 
-######################載具系統設定######################
-# 載具移動速度，單位為像素/幀
-VEHICLE_SPEED = 6
 
-# 載具尺寸 - 寬度（配合縮小的玩家尺寸）
-VEHICLE_WIDTH = 16
 
-# 載具尺寸 - 高度（配合縮小的玩家尺寸）
-VEHICLE_HEIGHT = 8
-
-# 載具顏色設定
-CAR_COLOR = (255, 0, 0)  # 汽車 - 紅色
-BIKE_COLOR = (0, 255, 0)  # 自行車 - 綠色
-
-######################法律系統設定######################
-# 危險區域設定
-WATER_DANGER_TIME = 60.0  # 在水中停留多久會被食人魚攻擊 (秒)
 
 ######################服裝系統設定######################
 # 服裝類型數量
-CLOTHING_TYPES = 20
+CLOTHING_TYPES = 5
 
 # 服裝顏色變化
 CLOTHING_COLORS = [
@@ -340,26 +328,73 @@ CLOTHING_COLORS = [
     (128, 128, 128),  # 灰色
 ]
 
-######################載具系統設定######################
-# 載具移動速度，單位為像素/幀
-VEHICLE_SPEED = 6
 
-# 載具尺寸 - 寬度（配合縮小的玩家尺寸）
-VEHICLE_WIDTH = 16
 
-# 載具尺寸 - 高度（配合縮小的玩家尺寸）
-VEHICLE_HEIGHT = 8
+######################天氣系統設定######################
+# 天氣類型和對應的特效設定
+WEATHER_TYPES = {
+    "☀️ 晴朗": {
+        "sky_color_modifier": (1.0, 1.0, 1.0),  # 無色彩修正
+        "light_modifier": 1.0,  # 正常光線
+        "particles": None,  # 無粒子特效
+        "sound": None,  # 無環境音效
+        "visibility": 1.0,  # 正常能見度
+    },
+    "⛅ 多雲": {
+        "sky_color_modifier": (0.9, 0.9, 0.95),  # 稍微偏灰
+        "light_modifier": 0.8,  # 稍微暗一點
+        "particles": None,  # 無粒子特效
+        "sound": None,  # 無環境音效
+        "visibility": 0.95,  # 稍微降低能見度
+    },
+    "☁️ 陰天": {
+        "sky_color_modifier": (0.7, 0.7, 0.8),  # 灰藍色調
+        "light_modifier": 0.6,  # 較暗
+        "particles": None,  # 無粒子特效
+        "sound": None,  # 無環境音效
+        "visibility": 0.8,  # 降低能見度
+    },
+    "🌧️ 小雨": {
+        "sky_color_modifier": (0.6, 0.6, 0.7),  # 深灰藍色
+        "light_modifier": 0.5,  # 較暗
+        "particles": "light_rain",  # 小雨粒子
+        "sound": "light_rain",  # 小雨音效
+        "visibility": 0.7,  # 明顯降低能見度
+    },
+    "⛈️ 雷雨": {
+        "sky_color_modifier": (0.4, 0.4, 0.5),  # 很暗的灰色
+        "light_modifier": 0.3,  # 很暗
+        "particles": "heavy_rain",  # 大雨粒子
+        "sound": "thunder_rain",  # 雷雨音效
+        "visibility": 0.5,  # 大幅降低能見度
+        "lightning": True,  # 閃電效果
+    },
+    "🌨️ 下雪": {
+        "sky_color_modifier": (0.9, 0.9, 1.0),  # 冷色調白
+        "light_modifier": 0.7,  # 稍暗但較亮
+        "particles": "snow",  # 雪花粒子
+        "sound": "wind",  # 風聲
+        "visibility": 0.6,  # 降低能見度
+    }
+}
 
-# 載具顏色
-CAR_COLOR = (255, 0, 0)  # 紅色汽車
-BIKE_COLOR = (0, 150, 0)  # 綠色自行車
-TRUCK_COLOR = (139, 69, 19)  # 棕色卡車
-BUS_COLOR = (0, 100, 200)  # 藍色公車
+# 天氣特效粒子設定
+RAIN_PARTICLE_COUNT = 200  # 雨滴數量
+SNOW_PARTICLE_COUNT = 150  # 雪花數量
+RAIN_PARTICLE_SPEED = 400  # 雨滴下落速度（像素/秒）
+SNOW_PARTICLE_SPEED = 100  # 雪花下落速度（像素/秒）
+RAIN_PARTICLE_COLOR = (200, 200, 255)  # 雨滴顏色（淺藍白）
+SNOW_PARTICLE_COLOR = (255, 255, 255)  # 雪花顏色（白色）
 
-# AI 載具生成設定
-MAX_AI_VEHICLES = 20  # 最大 AI 載具數量
-AI_SPAWN_INTERVAL = 5.0  # AI 載具生成間隔（秒）
-AI_DESPAWN_DISTANCE = 200  # AI 載具消失距離
+# 閃電效果設定
+LIGHTNING_DURATION = 0.2  # 閃電持續時間（秒）
+LIGHTNING_INTERVAL_MIN = 3.0  # 最短閃電間隔（秒）
+LIGHTNING_INTERVAL_MAX = 8.0  # 最長閃電間隔（秒）
+LIGHTNING_BRIGHTNESS = 0.8  # 閃電亮度加成
+
+# 霧效設定
+FOG_ALPHA = 100  # 霧的透明度（0-255）
+FOG_COLOR = (200, 200, 200)  # 霧的顏色（淺灰）
 
 ######################字體設定######################
 # 預設字體大小

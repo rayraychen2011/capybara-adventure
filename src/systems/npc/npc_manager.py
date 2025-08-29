@@ -63,6 +63,9 @@ class NPCManager:
         # 時間系統整合
         self.time_manager = time_manager
 
+        # 農夫工作調度系統
+        self.farmer_scheduler = None
+
         # 渲染優化
         self.render_distance = 300  # 只渲染這個距離內的 NPC
         self.update_distance = 500  # 只更新這個距離內的 NPC
@@ -102,6 +105,9 @@ class NPCManager:
         # 驗證職業分配
         self._verify_profession_distribution()
 
+        # 初始化農夫工作調度系統
+        self._initialize_farmer_scheduler()
+
         print(
             f"NPC 創建完成: 小鎮 {len(self.town_npcs)} 個, 部落 0 個（已移除）, 總計 {len(self.all_npcs)} 個"
         )
@@ -138,6 +144,10 @@ class NPCManager:
         for npc in self.all_npcs:
             npc.set_terrain_system_reference(terrain_system)
             npc.set_terrain_system(terrain_system)  # 同時設置地形系統用於火車通勤等功能
+        
+        # 為農夫調度系統設定地形系統參考
+        if self.farmer_scheduler:
+            self.farmer_scheduler.set_terrain_system(terrain_system)
         
         # print(f"已為 {len(self.all_npcs)} 個 NPC 設定地形系統參考")  # 暫時關閉
 
@@ -388,14 +398,24 @@ class NPCManager:
             CHEF_COUNT, TEACHER_COUNT, HUNTER_COUNT, ARTIST_COUNT, OTHER_PROFESSIONS_COUNT
         )
         
-        # 依需求：所有 NPC 都設為無業遊民（一般居民）
-        professions = [Profession.RESIDENT] * total_npcs
-        print(f"所有 NPC 職業已設為：{Profession.RESIDENT.value}（無業遊民）")
+        # 根據新需求：50名農夫 + 49名無職業居民
+        professions = []
+        
+        # 添加50名農夫
+        professions.extend([Profession.FARMER] * FARMER_COUNT)
+        
+        # 添加49名無職業居民
+        professions.extend([Profession.RESIDENT] * OTHER_PROFESSIONS_COUNT)
+        
+        print(f"職業分配：{FARMER_COUNT} 名農夫 + {OTHER_PROFESSIONS_COUNT} 名無職業居民")
         return professions
 
-    def _find_safe_spawn_position(self, town_bounds, max_attempts=50):
+    def _find_safe_spawn_position(self, town_bounds, max_attempts=100):
         """
-        尋找安全的生成位置，避開建築物並確保在可行走區域\n
+        尋找安全的生成位置，避開建築物、草原並確保在可行走區域\n
+        \n
+        新增草原檢測：NPC不能生成在草原上（地形代碼0），草原專屬於野生動物\n
+        優先嘗試在住宅區（地形代碼5）和商業區（地形代碼6）生成\n
         \n
         參數:\n
         town_bounds (tuple): 小鎮邊界\n
@@ -406,41 +426,90 @@ class NPCManager:
         """
         town_x, town_y, town_width, town_height = town_bounds
 
-        for attempt in range(max_attempts):
-            # 在小鎮範圍內隨機選擇位置
+        # 優先地形類型：住宅區、商業區和農地
+        preferred_terrain_codes = [5, 6, 8]  # 住宅區、商業區、農地
+        fallback_terrain_codes = [3]      # 道路
+
+        # 第一輪：嘗試在優先地形生成
+        for attempt in range(max_attempts // 2):
             x = random.randint(town_x + 50, town_x + town_width - 50)
             y = random.randint(town_y + 50, town_y + town_height - 50)
 
-            # 檢查該位置是否可行走（如果有格子地圖）
-            if hasattr(self, "tile_map") and self.tile_map:
-                if not self.tile_map.is_position_walkable(x, y):
-                    continue  # 不可行走，嘗試下一個位置
+            # 檢查地形類型
+            if hasattr(self, "terrain_system") and self.terrain_system:
+                terrain_code = self.terrain_system.get_terrain_at_position(x, y)
+                if terrain_code not in preferred_terrain_codes:
+                    continue  # 跳過非優先地形
 
-            # 檢查該位置是否與建築物重疊
-            if hasattr(self, "buildings") and self.buildings:
-                # 建立測試矩形
-                test_rect = pygame.Rect(x - 15, y - 15, 30, 30)  # NPC 大小約 30x30
-
-                # 檢查是否與任何建築物重疊
-                safe_position = True
-                for building in self.buildings:
-                    # 使用 Building 物件的 rect 屬性
-                    if test_rect.colliderect(building.rect):
-                        safe_position = False
-                        break
-
-                if safe_position:
-                    return (x, y)
-            else:
-                # 如果還沒有建築物列表，直接返回可行走位置
+            # 檢查其他條件
+            if self._check_position_safety(x, y):
                 return (x, y)
 
-        # 如果找不到安全位置，返回邊界內的隨機位置
-        print("警告：找不到安全的 NPC 生成位置，使用隨機位置")
-        return (
-            random.randint(town_x + 50, town_x + town_width - 50),
-            random.randint(town_y + 50, town_y + town_height - 50),
-        )
+        # 第二輪：使用後備地形（道路）
+        for attempt in range(max_attempts // 2):
+            x = random.randint(town_x + 50, town_x + town_width - 50)
+            y = random.randint(town_y + 50, town_y + town_height - 50)
+
+            if hasattr(self, "terrain_system") and self.terrain_system:
+                terrain_code = self.terrain_system.get_terrain_at_position(x, y)
+                if terrain_code not in fallback_terrain_codes:
+                    continue  # 跳過非道路地形
+
+            if self._check_position_safety(x, y):
+                return (x, y)
+
+        # 最後手段：在已建成的住宅旁邊生成
+        if hasattr(self, "buildings") and self.buildings:
+            for building in self.buildings:
+                if hasattr(building, 'building_type') and building.building_type == "house":
+                    # 在住宅周圍尋找安全位置
+                    for offset_x in [-40, -20, 20, 40]:
+                        for offset_y in [-40, -20, 20, 40]:
+                            x = building.x + building.width // 2 + offset_x
+                            y = building.y + building.height // 2 + offset_y
+                            
+                            # 確保在邊界內
+                            if (town_x + 50 <= x <= town_x + town_width - 50 and
+                                town_y + 50 <= y <= town_y + town_height - 50):
+                                if self._check_position_safety(x, y, skip_terrain_check=True):
+                                    return (x, y)
+
+        # 最終後備方案
+        print("警告：找不到理想的 NPC 生成位置，使用住宅區中心位置")
+        return (town_x + town_width // 2, town_y + town_height // 2)
+
+    def _check_position_safety(self, x, y, skip_terrain_check=False):
+        """
+        檢查位置的安全性\n
+        \n
+        參數:\n
+        x (int): X座標\n
+        y (int): Y座標\n
+        skip_terrain_check (bool): 是否跳過地形檢查（用於緊急情況）\n
+        \n
+        回傳:\n
+        bool: 位置是否安全\n
+        """
+        # 檢查地形類型
+        if not skip_terrain_check and hasattr(self, "terrain_system") and self.terrain_system:
+            terrain_code = self.terrain_system.get_terrain_at_position(x, y)
+            if terrain_code == 0:  # 草原地形代碼 - 所有NPC都不能在草地上
+                return False
+            # 農地（地形代碼8）現在被視為安全區域，因為農夫可以在此移動
+
+        # 檢查可行走性
+        if hasattr(self, "tile_map") and self.tile_map:
+            if not self.tile_map.is_position_walkable(x, y):
+                return False
+
+        # 檢查建築物重疊
+        if hasattr(self, "buildings") and self.buildings:
+            test_rect = pygame.Rect(x - 15, y - 15, 30, 30)
+            for building in self.buildings:
+                if test_rect.colliderect(building.rect):
+                    return False
+
+        return True
 
     def _find_random_street_vendor_position(self, town_bounds):
         """
@@ -590,6 +659,19 @@ class NPCManager:
             if expected != actual:
                 print(f"    警告: {profession.value} 數量不符合規格要求！")
 
+    def _initialize_farmer_scheduler(self):
+        """
+        初始化農夫工作調度系統\n
+        """
+        try:
+            from src.systems.npc.farmer_work_scheduler import FarmerWorkScheduler
+            self.farmer_scheduler = FarmerWorkScheduler(self)
+            self.farmer_scheduler.initialize_farmers()
+            print("農夫工作調度系統初始化完成")
+        except ImportError as e:
+            print(f"無法載入農夫工作調度系統: {e}")
+            self.farmer_scheduler = None
+
     def update_optimized(self, dt, player_position):
         """
         優化的 NPC 更新方法 - 顯著提升效能\n
@@ -722,6 +804,10 @@ class NPCManager:
             }
             current_day = day_mapping.get(self.time_manager.day_of_week.value, 1)
             is_workday = self.time_manager.is_work_day
+
+        # 更新農夫工作調度系統
+        if self.farmer_scheduler:
+            self.farmer_scheduler.update(dt, self.time_manager)
 
         # 根據玩家位置決定更新哪些 NPC (效能優化)
         npcs_to_update = self._get_npcs_in_range(player_position, self.update_distance)

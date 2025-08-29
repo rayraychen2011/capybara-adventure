@@ -174,7 +174,7 @@ class WildlifeManager:
         初始化動物群體 - 生成初始動物\n
         \n
         參數:\n
-        scene_type (str): 場景類型 ("forest", "lake", 或 "all")\n
+        scene_type (str): 場景類型 ("forest", "lake", "grassland", 或 "all")\n
         """
         # 清空現有動物
         self.forest_animals.clear()
@@ -194,9 +194,20 @@ class WildlifeManager:
                     AnimalType.BEAR,        # 傳奇
                 ]
 
-                for _ in range(8):  # 初始生成8隻森林動物
+                for _ in range(6):  # 減少森林動物，為草原動物騰出空間
                     animal_type = random.choice(forest_species)
                     self._spawn_animal(animal_type, "forest")
+
+        if scene_type in ["grassland", "all"]:
+            # 在草原生成動物 - 新增草原動物系統
+            grassland_species = [
+                AnimalType.RABBIT,      # 兔子喜歡草原
+                AnimalType.SHEEP,       # 羊群在草原覓食
+            ]
+
+            for _ in range(8):  # 在草原生成8隻動物
+                animal_type = random.choice(grassland_species)
+                self._spawn_animal(animal_type, "grassland")
 
         if scene_type in ["lake", "all"]:
             # 檢查湖泊邊界有效性
@@ -206,12 +217,12 @@ class WildlifeManager:
                     AnimalType.TURTLE,      # 稀有
                 ]
 
-                for _ in range(4):  # 初始生成4隻湖泊動物
+                for _ in range(4):  # 湖泊動物保持原數量
                     animal_type = random.choice(lake_species)
                     self._spawn_animal(animal_type, "lake")
 
         print(
-            f"初始化完成：森林動物 {len(self.forest_animals)} 隻，湖泊動物 {len(self.lake_animals)} 隻"
+            f"初始化完成：森林動物 {len(self.forest_animals)} 隻，湖泊動物 {len(self.lake_animals)} 隻，草原動物將分散在地圖各處"
         )
 
     def _spawn_animal(self, animal_type, habitat):
@@ -220,7 +231,7 @@ class WildlifeManager:
         \n
         參數:\n
         animal_type (AnimalType): 動物種類\n
-        habitat (str): 棲息地類型 ("forest" 或 "lake")\n
+        habitat (str): 棲息地類型 ("forest", "lake", 或 "grassland")\n
         \n
         回傳:\n
         Animal: 生成的動物物件\n
@@ -236,23 +247,33 @@ class WildlifeManager:
             max_count = self.max_lake_animals
             terrain_code = 2  # 水域地形代碼
             bounds = self.lake_bounds  # 後備邊界
+        elif habitat == "grassland":
+            # 草原動物使用森林動物容器，但在草原地形生成
+            container = self.forest_animals  # 與森林動物共享容器以便管理
+            max_count = self.max_forest_animals + 8  # 增加草原動物的配額
+            terrain_code = 0  # 草原地形代碼
+            bounds = self.forest_bounds  # 使用相同的搜尋邊界
         else:
             print(f"未知的棲息地類型: {habitat}")
             return None
 
-        # 檢查數量限制
-        if len(container) >= max_count:
+        # 檢查數量限制（草原動物特殊處理）
+        if habitat != "grassland" and len(container) >= max_count:
             return None
 
         # 嘗試在對應地形代碼的位置生成動物
         if self.terrain_system:
-            terrain_positions = self._find_terrain_positions(terrain_code, 5)
+            terrain_positions = self._find_terrain_positions(terrain_code, 10)
             if terrain_positions:
                 # 從符合地形的位置中隨機選擇
                 x, y = random.choice(terrain_positions)
+                print(f"在地形代碼 {terrain_code} 找到位置: ({x}, {y})")
             else:
                 # 如果找不到合適的地形位置，使用後備邊界
                 print(f"找不到地形代碼 {terrain_code} 的位置，使用後備邊界")
+                if bounds[2] <= 60 or bounds[3] <= 60:  # 寬度或高度太小
+                    print(f"棲息地 {habitat} 邊界太小，無法生成動物: {bounds}")
+                    return None
                 x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
                 y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
         else:
@@ -339,8 +360,6 @@ class WildlifeManager:
         ):
             # 選擇森林動物種類 (根據稀有度加權)
             spawn_weights = {
-                AnimalType.RABBIT: 30,        # 稀有，很常見
-                AnimalType.SHEEP: 25,         # 稀有，很常見
                 AnimalType.MOUNTAIN_LION: 8,  # 超稀有，少見
                 AnimalType.BLACK_PANTHER: 6,  # 超稀有，少見
                 AnimalType.BEAR: 2,           # 傳奇，稀有
@@ -351,9 +370,35 @@ class WildlifeManager:
                 self._spawn_animal(animal_type, "forest")
                 self.last_spawn_time = current_time
 
-        # 在小鎮場景或湖泊場景生成湖泊動物
+        # 在小鎮場景生成草原動物
+        elif current_scene == "town":
+            # 隨機決定生成草原動物或湖泊動物
+            if random.choice([True, False]):  # 50% 機率生成草原動物
+                # 選擇草原動物種類 
+                spawn_weights = {
+                    AnimalType.RABBIT: 35,        # 兔子喜歡草原
+                    AnimalType.SHEEP: 30,         # 羊群在草原覓食
+                }
+
+                animal_type = self._weighted_random_choice(spawn_weights)
+                if animal_type:
+                    self._spawn_animal(animal_type, "grassland")
+                    self.last_spawn_time = current_time
+            else:
+                # 生成湖泊動物
+                if len(self.lake_animals) < self.max_lake_animals:
+                    spawn_weights = {
+                        AnimalType.TURTLE: 25,  # 稀有，很常見
+                    }
+
+                    animal_type = self._weighted_random_choice(spawn_weights)
+                    if animal_type:
+                        self._spawn_animal(animal_type, "lake")
+                        self.last_spawn_time = current_time
+
+        # 在湖泊場景生成湖泊動物
         elif (
-            current_scene in ["lake", "town"] 
+            current_scene == "lake" 
             and len(self.lake_animals) < self.max_lake_animals
         ):
             # 選擇湖泊動物種類
