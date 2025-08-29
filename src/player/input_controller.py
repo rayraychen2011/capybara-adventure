@@ -51,7 +51,7 @@ class InputController:
             pygame.K_m: "map",           # 地圖
             pygame.K_RETURN: "confirm",  # 確認
             pygame.K_BACKSPACE: "cancel",  # 取消
-            pygame.K_f: "fishing",       # 釣魚
+            pygame.K_f: "harvest_vegetable",  # 收穫蔬菜（修正衝突）
             pygame.K_g: "hunting",       # 狩獵
             pygame.K_v: "vehicle",       # 載具
             pygame.K_LSHIFT: "run",      # 跑步（預留）
