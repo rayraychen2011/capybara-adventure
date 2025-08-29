@@ -8,6 +8,7 @@ from src.systems.wildlife.animal_data import (
     AnimalData,
     ThreatLevel,
     BehaviorType,
+    RarityLevel,
 )
 
 
@@ -26,6 +27,7 @@ class AnimalState(Enum):
     FLEEING = "逃跑中"  # 被驚嚇，快速逃離
     ATTACKING = "攻擊中"  # 主動攻擊目標
     HIDING = "躲藏中"  # 躲在安全地點
+    ROARING = "怒吼中"  # 傳奇動物警告玩家
     DEAD = "死亡"  # 動物已死亡
 
 
@@ -85,6 +87,7 @@ class Animal:
         # 行為屬性
         self.threat_level = AnimalData.get_animal_property(animal_type, "threat_level")
         self.behavior_type = AnimalData.get_animal_property(animal_type, "behavior")
+        self.rarity = AnimalData.get_animal_property(animal_type, "rarity")  # 新增稀有度
         self.is_protected = (
             AnimalData.get_animal_property(animal_type, "is_protected") or False
         )
@@ -96,17 +99,39 @@ class Animal:
             128,
         )
 
+        # 視野系統 - 根據需求設定
+        self.vision_angle = 120  # 視野角度（度）
+        self.vision_distance = 20 * 20  # 視野距離（20公尺 = 400像素，假設1公尺=20像素）
+        self.vision_direction = 0  # 當前面向方向（度）
+
+        # 攻擊系統 - 根據需求設定
+        self.attack_range = 1.5 * 20  # 攻擊距離（1.5公尺 = 30像素）
+
+        # 傳奇動物領地系統
+        self.has_territory = (self.rarity == RarityLevel.LEGENDARY)
+        if self.has_territory:
+            # 領地範圍（以動物為中心的圓形區域）
+            self.territory_radius = 150  # 像素
+            self.territory_center = (self.x, self.y)
+            self.territory_invasion_timer = 0  # 玩家入侵領地計時器
+            self.territory_warning_given = False  # 是否已給出警告
+            
         # AI 相關變數
         self.last_target_change = 0  # 上次改變目標的時間
         self.alert_timer = 0  # 警戒狀態計時器
         self.flee_timer = 0  # 逃跑狀態計時器
         self.wander_timer = 0  # 漫遊計時器
+        self.roar_timer = 0  # 怒吼計時器
         self.detection_range = 80  # 玩家檢測範圍
 
         # 生存狀態
         self.is_alive = True
         self.death_time = 0
         self.killer = None  # 殺死此動物的對象
+
+        # 攻擊狀態標記
+        self.has_attacked_player = False
+        self.attack_damage = 0
 
         # 掉落物品
         self.drop_items = AnimalData.get_animal_loot(animal_type)
@@ -165,14 +190,38 @@ class Animal:
 
         # 檢測玩家
         player_distance = self._calculate_distance_to_player(player_position)
+        player_in_vision = self._is_player_in_vision(player_position)
 
-        # 根據當前狀態更新行為
-        self._update_behavior_state(dt, player_position, player_distance)
+        # 傳奇動物領地檢查
+        if self.has_territory:
+            self._update_territory_behavior(dt, player_position, player_distance)
+
+        # 根據稀有度決定行為邏輯
+        if self.rarity == RarityLevel.RARE:
+            # 稀有動物：看到玩家會逃跑
+            if player_in_vision and player_distance < self.vision_distance:
+                if self.state not in [AnimalState.FLEEING, AnimalState.HIDING]:
+                    self.state = AnimalState.FLEEING
+                    self.flee_timer = random.uniform(4.0, 7.0)
+                    self._set_flee_target(player_position)
+        
+        elif self.rarity == RarityLevel.SUPER_RARE:
+            # 超稀有動物：繼續做原本的事，除非被攻擊
+            # 只有在被直接攻擊時才會改變行為，否則忽略玩家
+            pass  # 行為在 take_damage 方法中處理
+        
+        elif self.rarity == RarityLevel.LEGENDARY:
+            # 傳奇動物：領地行為已在 _update_territory_behavior 中處理
+            pass
+        
+        else:
+            # 舊版行為邏輯（向後相容）
+            self._update_behavior_state(dt, player_position, player_distance)
 
         # 執行當前狀態的行為
         self._execute_current_behavior(dt, player_position, player_distance)
 
-        # 更新移動
+        # 更新移動（並更新面向方向）
         self._update_movement(dt)
 
         # 更新計時器
@@ -190,6 +239,79 @@ class Animal:
         """
         px, py = player_position
         return math.sqrt((self.x - px) ** 2 + (self.y - py) ** 2)
+
+    def _is_player_in_vision(self, player_position):
+        """
+        檢查玩家是否在動物的視野範圍內\n
+        \n
+        參數:\n
+        player_position (tuple): 玩家位置\n
+        \n
+        回傳:\n
+        bool: 如果玩家在視野內則回傳True\n
+        """
+        px, py = player_position
+        
+        # 計算到玩家的距離
+        distance = self._calculate_distance_to_player(player_position)
+        if distance > self.vision_distance:
+            return False
+        
+        # 計算到玩家的角度
+        angle_to_player = math.degrees(math.atan2(py - self.y, px - self.x))
+        
+        # 標準化角度到 0-360 度
+        angle_to_player = angle_to_player % 360
+        vision_dir = self.vision_direction % 360
+        
+        # 計算角度差
+        angle_diff = abs(angle_to_player - vision_dir)
+        if angle_diff > 180:
+            angle_diff = 360 - angle_diff
+        
+        # 檢查是否在視野角度範圍內
+        return angle_diff <= (self.vision_angle / 2)
+
+    def _update_territory_behavior(self, dt, player_position, player_distance):
+        """
+        更新傳奇動物的領地行為\n
+        \n
+        參數:\n
+        dt (float): 時間間隔\n
+        player_position (tuple): 玩家位置\n
+        player_distance (float): 與玩家的距離\n
+        """
+        if not self.has_territory:
+            return
+        
+        # 檢查玩家是否在領地內
+        territory_distance = math.sqrt(
+            (player_position[0] - self.territory_center[0]) ** 2 + 
+            (player_position[1] - self.territory_center[1]) ** 2
+        )
+        
+        if territory_distance <= self.territory_radius:
+            # 玩家在領地內
+            self.territory_invasion_timer += dt
+            
+            if not self.territory_warning_given and self.territory_invasion_timer >= 1.0:
+                # 入侵1秒後給出警告
+                self.state = AnimalState.ROARING
+                self.roar_timer = 2.0  # 怒吼2秒
+                self.territory_warning_given = True
+                print(f"{self.animal_type.value} 發出威脅性的怒吼！")
+                # TODO: 播放怒吼音效
+                
+            elif self.territory_invasion_timer >= 10.0:
+                # 入侵10秒後攻擊
+                self.state = AnimalState.ATTACKING
+                print(f"{self.animal_type.value} 開始攻擊入侵者！")
+        else:
+            # 玩家離開領地，重置計時器
+            self.territory_invasion_timer = 0
+            self.territory_warning_given = False
+            if self.state in [AnimalState.ROARING, AnimalState.ATTACKING]:
+                self.state = AnimalState.WANDERING
 
     def _update_behavior_state(self, dt, player_position, player_distance):
         """
@@ -225,8 +347,8 @@ class Animal:
             elif self.threat_level in [ThreatLevel.HIGH, ThreatLevel.EXTREME]:
                 # 高威脅動物：根據行為類型攻擊或警戒
                 if self.behavior_type in [
-                    BehaviorType.AGGRESSIVE,
-                    BehaviorType.PREDATOR,
+                    BehaviorType.TERRITORIAL,
+                    BehaviorType.DEFENSIVE,
                 ]:
                     if player_distance < 60:
                         self.state = AnimalState.ATTACKING
@@ -271,6 +393,9 @@ class Animal:
 
         elif self.state == AnimalState.HIDING:
             self._hiding_behavior(dt)
+            
+        elif self.state == AnimalState.ROARING:
+            self._roaring_behavior(dt)
 
     def _wander_behavior(self, dt):
         """
@@ -350,6 +475,20 @@ class Animal:
             self.state = AnimalState.HIDING
             self.wander_timer = random.uniform(3.0, 6.0)  # 躲藏一段時間
 
+    def _roaring_behavior(self, dt):
+        """
+        怒吼行為 - 傳奇動物警告玩家\n
+        \n
+        參數:\n
+        dt (float): 時間間隔\n
+        """
+        self.current_speed = 0  # 停止移動，專注怒吼
+        
+        # 怒吼時間結束
+        if self.roar_timer <= 0:
+            self.state = AnimalState.ALERT
+            self.alert_timer = 1.0
+
     def _attacking_behavior(self, dt, player_position):
         """
         攻擊行為 - 向玩家移動並攻擊\n
@@ -366,8 +505,33 @@ class Animal:
         # 檢查是否接近到可以攻擊的距離
         distance = self._calculate_distance_to_player(player_position)
         if distance < 25:  # 接近攻擊範圍
-            # 執行攻擊 (這裡可以添加攻擊邏輯)
-            print(f"{self.animal_type.value} 攻擊了玩家！")
+            # 攻擊冷卻檢查
+            current_time = pygame.time.get_ticks() / 1000.0
+            if not hasattr(self, 'last_attack_time'):
+                self.last_attack_time = 0
+            
+            if current_time - self.last_attack_time >= 2.0:  # 2秒攻擊冷卻
+                # 根據威脅等級計算傷害
+                if self.threat_level == ThreatLevel.HARMLESS:
+                    damage = 10
+                elif self.threat_level == ThreatLevel.LOW:
+                    damage = 20
+                elif self.threat_level == ThreatLevel.MEDIUM:
+                    damage = 40
+                elif self.threat_level == ThreatLevel.HIGH:
+                    damage = 80
+                elif self.threat_level == ThreatLevel.EXTREME:
+                    damage = 120
+                else:
+                    damage = 30  # 預設傷害
+                
+                # 執行攻擊 - 需要從外部傳入玩家實例
+                print(f"{self.animal_type.value} 攻擊了玩家！造成 {damage} 點傷害")
+                self.last_attack_time = current_time
+                
+                # 標記有攻擊發生，供外部系統處理
+                self.has_attacked_player = True
+                self.attack_damage = damage
 
             # 攻擊後可能退開一些
             if random.random() < 0.3:  # 30% 機率攻擊後退開
@@ -456,7 +620,7 @@ class Animal:
 
     def _update_movement(self, dt):
         """
-        更新動物移動 - 包含棲息地邊界檢查\n
+        更新動物移動 - 包含棲息地邊界檢查和面向方向更新\n
         \n
         參數:\n
         dt (float): 時間間隔\n
@@ -476,6 +640,9 @@ class Animal:
             if distance > 0:
                 move_x = (dx / distance) * move_distance
                 move_y = (dy / distance) * move_distance
+
+                # 更新面向方向
+                self.vision_direction = math.degrees(math.atan2(dy, dx))
 
                 # 計算新位置
                 new_x = self.x + move_x
@@ -504,6 +671,7 @@ class Animal:
         self.alert_timer = max(0, self.alert_timer - dt)
         self.flee_timer = max(0, self.flee_timer - dt)
         self.wander_timer = max(0, self.wander_timer - dt)
+        self.roar_timer = max(0, self.roar_timer - dt)
 
     def _is_at_target(self):
         """
@@ -531,20 +699,44 @@ class Animal:
         self.health -= damage
         print(f"{self.animal_type.value} 受到 {damage} 點傷害")
 
-        # 受到攻擊時的反應
+        # 受到攻擊時的反應 - 根據稀有度決定
         if self.health > 0:
-            if self.threat_level in [ThreatLevel.HARMLESS, ThreatLevel.LOW]:
-                # 無害動物受攻擊時驚恐逃跑
+            if self.rarity == RarityLevel.RARE:
+                # 稀有動物：受攻擊時驚恐逃跑
                 self.state = AnimalState.FLEEING
                 self.flee_timer = 8.0  # 較長的逃跑時間
                 if attacker:
                     self._set_flee_target(attacker.get_center_position())
-            elif self.behavior_type in [
-                BehaviorType.DEFENSIVE,
-                BehaviorType.AGGRESSIVE,
-            ]:
-                # 防禦性或攻擊性動物反擊
+            
+            elif self.rarity == RarityLevel.SUPER_RARE:
+                # 超稀有動物：被攻擊後會反擊或逃跑
+                if self.threat_level in [ThreatLevel.HIGH, ThreatLevel.EXTREME]:
+                    self.state = AnimalState.ATTACKING
+                else:
+                    self.state = AnimalState.FLEEING
+                    self.flee_timer = 6.0
+                    if attacker:
+                        self._set_flee_target(attacker.get_center_position())
+            
+            elif self.rarity == RarityLevel.LEGENDARY:
+                # 傳奇動物：被攻擊後變得更加兇猛
                 self.state = AnimalState.ATTACKING
+                print(f"{self.animal_type.value} 被激怒了！")
+            
+            else:
+                # 舊版邏輯（向後相容）
+                if self.threat_level in [ThreatLevel.HARMLESS, ThreatLevel.LOW]:
+                    # 無害動物受攻擊時驚恐逃跑
+                    self.state = AnimalState.FLEEING
+                    self.flee_timer = 8.0  # 較長的逃跑時間
+                    if attacker:
+                        self._set_flee_target(attacker.get_center_position())
+                elif self.behavior_type in [
+                    BehaviorType.DEFENSIVE,
+                    BehaviorType.TERRITORIAL,
+                ]:
+                    # 防禦性或攻擊性動物反擊
+                    self.state = AnimalState.ATTACKING
         else:
             # 動物死亡
             self._die(attacker)
@@ -590,32 +782,55 @@ class Animal:
             self.x - self.size // 2, self.y - self.size // 2, self.size, self.size
         )
 
-    def draw(self, screen):
+    def draw(self, screen, camera_offset=(0, 0), show_vision=False, show_territory=False):
         """
         繪製動物\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        camera_offset (tuple): 攝影機偏移量 (offset_x, offset_y)\n
+        show_vision (bool): 是否顯示視野範圍\n
+        show_territory (bool): 是否顯示領地範圍\n
         """
+        offset_x, offset_y = camera_offset
+        draw_x = int(self.x - offset_x)
+        draw_y = int(self.y - offset_y)
+        
+        # 繪製領地範圍（傳奇動物）
+        if show_territory and self.has_territory:
+            territory_draw_x = int(self.territory_center[0] - offset_x)
+            territory_draw_y = int(self.territory_center[1] - offset_y)
+            pygame.draw.circle(
+                screen, 
+                (255, 0, 0, 50),  # 半透明紅色
+                (territory_draw_x, territory_draw_y), 
+                self.territory_radius, 
+                3
+            )
+        
+        # 繪製視野範圍
+        if show_vision and self.is_alive:
+            self._draw_vision_cone(screen, draw_x, draw_y)
+        
         if not self.is_alive:
             # 死亡動物變暗顯示
             dead_color = tuple(c // 3 for c in self.color)
             pygame.draw.circle(
-                screen, dead_color, (int(self.x), int(self.y)), self.size
+                screen, dead_color, (draw_x, draw_y), self.size
             )
             pygame.draw.circle(
-                screen, (255, 0, 0), (int(self.x), int(self.y)), self.size, 2
+                screen, (255, 0, 0), (draw_x, draw_y), self.size, 2
             )  # 紅色邊框
             return
 
         # 繪製動物本體
-        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.size)
+        pygame.draw.circle(screen, self.color, (draw_x, draw_y), self.size)
 
         # 根據狀態添加視覺效果
         if self.state == AnimalState.ALERT:
             # 警戒狀態：黃色邊框
             pygame.draw.circle(
-                screen, (255, 255, 0), (int(self.x), int(self.y)), self.size, 3
+                screen, (255, 255, 0), (draw_x, draw_y), self.size, 3
             )
         elif self.state == AnimalState.FLEEING:
             # 逃跑狀態：閃爍效果
@@ -623,38 +838,97 @@ class Animal:
                 pygame.draw.circle(
                     screen,
                     (255, 255, 255),
-                    (int(self.x), int(self.y)),
+                    (draw_x, draw_y),
                     self.size + 3,
                     2,
                 )
         elif self.state == AnimalState.ATTACKING:
             # 攻擊狀態：紅色邊框
             pygame.draw.circle(
-                screen, (255, 0, 0), (int(self.x), int(self.y)), self.size, 3
+                screen, (255, 0, 0), (draw_x, draw_y), self.size, 3
+            )
+        elif self.state == AnimalState.ROARING:
+            # 怒吼狀態：橘色邊框閃爍
+            if int(pygame.time.get_ticks() / 150) % 2:
+                pygame.draw.circle(
+                    screen, (255, 165, 0), (draw_x, draw_y), self.size + 5, 4
+                )
+
+        # 稀有度標記
+        if self.rarity == RarityLevel.LEGENDARY:
+            # 傳奇動物：金色王冠標記
+            pygame.draw.circle(
+                screen, (255, 215, 0), (draw_x, draw_y - self.size - 8), 6
+            )
+        elif self.rarity == RarityLevel.SUPER_RARE:
+            # 超稀有動物：紫色星星標記
+            pygame.draw.circle(
+                screen, (128, 0, 128), (draw_x, draw_y - self.size - 8), 5
+            )
+        elif self.rarity == RarityLevel.RARE:
+            # 稀有動物：藍色點標記
+            pygame.draw.circle(
+                screen, (0, 100, 255), (draw_x, draw_y - self.size - 8), 4
             )
 
         # 保育類動物特殊標記
         if self.is_protected:
             # 綠色保護標記
             pygame.draw.circle(
-                screen, (0, 255, 0), (int(self.x), int(self.y) - self.size - 8), 4
+                screen, (0, 255, 0), (draw_x + self.size, draw_y - self.size), 4
             )
 
         # 健康條 (如果受傷)
         if self.health < self.max_health:
-            self._draw_health_bar(screen)
+            self._draw_health_bar(screen, draw_x, draw_y)
 
-    def _draw_health_bar(self, screen):
+    def _draw_vision_cone(self, screen, draw_x, draw_y):
+        """
+        繪製動物的視野扇形\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        draw_x (int): 螢幕上的X座標\n
+        draw_y (int): 螢幕上的Y座標\n
+        """
+        # 視野扇形的起始和結束角度（弧度）
+        start_angle = math.radians(self.vision_direction - self.vision_angle / 2)
+        end_angle = math.radians(self.vision_direction + self.vision_angle / 2)
+        
+        # 創建視野扇形的點列表
+        points = [(draw_x, draw_y)]  # 動物位置作為扇形頂點
+        
+        # 添加扇形邊緣的點
+        num_points = 20  # 扇形邊緣的細分程度
+        for i in range(num_points + 1):
+            angle = start_angle + (end_angle - start_angle) * i / num_points
+            point_x = draw_x + self.vision_distance * math.cos(angle)
+            point_y = draw_y + self.vision_distance * math.sin(angle)
+            points.append((point_x, point_y))
+        
+        # 繪製半透明的視野扇形
+        if len(points) > 2:
+            # 創建半透明表面
+            vision_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+            pygame.draw.polygon(vision_surface, (255, 255, 0, 80), points)  # 半透明黃色
+            screen.blit(vision_surface, (0, 0))
+            
+            # 繪製視野邊界線
+            pygame.draw.lines(screen, (255, 255, 0), False, points, 2)
+
+    def _draw_health_bar(self, screen, draw_x, draw_y):
         """
         繪製健康條\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
+        draw_x (int): 螢幕上的X座標\n
+        draw_y (int): 螢幕上的Y座標\n
         """
         bar_width = self.size * 2
         bar_height = 4
-        bar_x = int(self.x - bar_width // 2)
-        bar_y = int(self.y - self.size - 12)
+        bar_x = draw_x - bar_width // 2
+        bar_y = draw_y - self.size - 12
 
         # 背景條 (紅色)
         pygame.draw.rect(screen, (255, 0, 0), (bar_x, bar_y, bar_width, bar_height))

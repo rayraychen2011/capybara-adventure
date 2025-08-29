@@ -101,20 +101,18 @@ class Player:
         # self.item_slots = [None] * ITEM_BAR_SLOTS  # 已刪除
         # self.selected_slot = 0  # 已刪除
 
-        ######################裝備系統######################
-        # 裝備欄（5格）
-        self.equipment_slots = {
-            1: {"name": "槍", "equipped": False},
-            2: {"name": "釣竿", "equipped": False},
-            3: {"name": "小刀", "equipped": False},
-            4: {"name": "車鑰匙", "equipped": False},
-            5: {"name": "手電筒", "equipped": False},
+        ######################武器圓盤系統######################
+        # 武器圓盤（3個槽位：槍、斧頭、空手）
+        self.weapon_wheel_visible = False  # 武器圓盤是否顯示
+        self.current_weapon = "unarmed"    # 當前武器（預設空手）
+        self.available_weapons = {
+            "gun": {"name": "槍", "unlocked": True},     # 槍（初始擁有）
+            "axe": {"name": "斧頭", "unlocked": True},   # 斧頭（初始擁有） 
+            "unarmed": {"name": "空手", "unlocked": True}  # 空手（初始擁有）
         }
-        self.current_equipment = None  # 當前裝備的物品
-        self.equipment_wheel_visible = False  # 裝備圓盤是否顯示
 
-        # 添加一些初始物品供測試 - 已移除物品系統
-        # self._add_initial_items()  # 已刪除
+        # 移除背包系統（根據需求刪除）
+        # 不再有物品欄、背包、物品撿取等功能
 
         # 經驗值和等級（預留功能）
         self.experience = 0
@@ -276,7 +274,7 @@ class Player:
 
         # 檢查死亡
         if self.health <= 0:
-            self._handle_death()
+            self._handle_death(source)
             return True
 
         return True
@@ -295,11 +293,15 @@ class Player:
         if healed > 0:
             print(f"恢復了 {healed} 點生命值！當前生命值: {self.health}")
 
-    def _handle_death(self):
+    def _handle_death(self, source=None):
         """
         處理玩家死亡\n
+        \n
+        參數:\n
+        source (object): 死亡來源，如動物實例等\n
         """
         self.is_alive = False
+        self.death_source = source  # 記錄死亡來源
         print("玩家死亡了...")
 
         # 這裡會觸發死亡重生機制
@@ -545,38 +547,93 @@ class Player:
         relative_y = int(self.y - HOME_WORLD_Y)
         return (relative_x, relative_y)
 
-    ######################物品欄系統方法（已刪除）######################
-    # 根據需求，刪除所有物品相關功能
-    # 不會有任何掉落物品，不會有任何撿取物品的行為
+    ######################物品欄系統方法######################
+    # 簡化的物品系統，支援狩獵和砍樹獎勵
     
     def add_item(self, item_name, quantity=1):
-        """物品系統已刪除 - 此方法不再執行任何功能"""
-        print("物品系統已刪除，無法添加物品")
-        return False
+        """
+        添加物品到玩家背包\n
+        \n
+        參數:\n
+        item_name (str): 物品名稱\n
+        quantity (int): 物品數量，範圍 > 0\n
+        \n
+        回傳:\n
+        bool: 成功添加返回 True，否則返回 False\n
+        """
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+        
+        if item_name in self.simple_inventory:
+            self.simple_inventory[item_name] += quantity
+        else:
+            self.simple_inventory[item_name] = quantity
+        
+        print(f"📦 獲得物品: {item_name} x{quantity}")
+        return True
 
     def remove_item(self, item_name, quantity=1):
-        """物品系統已刪除 - 此方法不再執行任何功能"""
-        print("物品系統已刪除，無法移除物品")
+        """
+        從玩家背包移除物品\n
+        \n
+        參數:\n
+        item_name (str): 物品名稱\n
+        quantity (int): 移除數量，範圍 > 0\n
+        \n
+        回傳:\n
+        bool: 成功移除返回 True，否則返回 False\n
+        """
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+            return False
+        
+        if item_name not in self.simple_inventory:
+            return False
+        
+        if self.simple_inventory[item_name] >= quantity:
+            self.simple_inventory[item_name] -= quantity
+            if self.simple_inventory[item_name] == 0:
+                del self.simple_inventory[item_name]
+            return True
         return False
 
     def has_item(self, item_name, quantity=1):
-        """物品系統已刪除 - 此方法永遠返回 False"""
-        return False
+        """檢查玩家是否擁有指定數量的物品"""
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+            return False
+        return self.simple_inventory.get(item_name, 0) >= quantity
 
     def get_item_count(self, item_name):
-        """物品系統已刪除 - 此方法永遠返回 0"""
-        return 0
+        """獲取指定物品的數量"""
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+            return 0
+        return self.simple_inventory.get(item_name, 0)
 
     def get_item_slots(self):
-        """物品系統已刪除 - 此方法返回空列表"""
-        return []
+        """獲取物品格子列表，簡化版本返回字典"""
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+        return self.simple_inventory
+
+    def get_inventory_list(self):
+        """
+        獲取物品清單\n
+        \n
+        回傳:\n
+        list: 物品清單，每個元素是 (物品名稱, 數量) 的元組\n
+        """
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+        return list(self.simple_inventory.items())
 
     def select_slot(self, slot_index):
-        """物品系統已刪除 - 此方法不再執行任何功能"""
+        """簡化版本 - 不實作格子選擇功能"""
         pass
 
     def get_selected_item(self):
-        """物品系統已刪除 - 此方法永遠返回 None"""
+        """簡化版本 - 返回 None"""
         return None
 
     ######################魚餌系統方法######################
@@ -1142,10 +1199,16 @@ class Player:
 
     def _add_initial_items(self):
         """
-        添加初始物品供測試 - 物品系統已刪除\n
+        添加初始物品供測試\n
         """
-        # 物品系統已完全移除，不再添加任何物品
-        print("物品系統已刪除，不再添加初始物品")
+        # 初始化簡化物品系統
+        if not hasattr(self, 'simple_inventory'):
+            self.simple_inventory = {}
+        
+        # 給玩家一些基本物品
+        self.add_item("木材", 5)
+        self.add_item("麵包", 3)
+        print("✅ 物品系統已初始化，添加了基本物品")
 
     ######################裝備系統方法######################
     def toggle_equipment_wheel(self):
@@ -1219,3 +1282,67 @@ class Player:
         """
         current = self.get_current_equipment()
         return current is not None and current["name"] == equipment_name
+
+    ######################武器圓盤系統方法######################
+    def toggle_weapon_wheel(self):
+        """
+        切換武器圓盤顯示狀態\n
+        """
+        self.weapon_wheel_visible = not self.weapon_wheel_visible
+        print(f"武器圓盤 {'顯示' if self.weapon_wheel_visible else '隱藏'}")
+
+    def select_weapon(self, weapon_type):
+        """
+        選擇武器\n
+        \n
+        參數:\n
+        weapon_type (str): 武器類型 ("gun", "axe", "unarmed")\n
+        \n
+        回傳:\n
+        bool: 是否成功選擇\n
+        """
+        if weapon_type in self.available_weapons and self.available_weapons[weapon_type]["unlocked"]:
+            self.current_weapon = weapon_type
+            weapon_name = self.available_weapons[weapon_type]["name"]
+            print(f"🔫 切換到武器: {weapon_name}")
+            
+            # 隱藏武器圓盤
+            self.weapon_wheel_visible = False
+            return True
+        return False
+
+    def get_current_weapon(self):
+        """
+        獲取當前武器類型\n
+        \n
+        回傳:\n
+        str: 當前武器類型\n
+        """
+        return self.current_weapon
+
+    def get_current_weapon_name(self):
+        """
+        獲取當前武器的中文名稱\n
+        \n
+        回傳:\n
+        str: 當前武器名稱\n
+        """
+        return self.available_weapons[self.current_weapon]["name"]
+
+    def can_shoot(self):
+        """
+        檢查是否可以射擊\n
+        \n
+        回傳:\n
+        bool: 當前武器是否可以射擊\n
+        """
+        return self.current_weapon == "gun"
+
+    def can_chop(self):
+        """
+        檢查是否可以砍伐\n
+        \n
+        回傳:\n
+        bool: 當前武器是否可以砍伐\n
+        """
+        return self.current_weapon == "axe"

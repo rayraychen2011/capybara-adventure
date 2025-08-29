@@ -30,9 +30,11 @@ class EquipmentWheelUI:
         self.equipped_color = (0, 255, 0)      # 已裝備槽顏色
         self.text_color = (255, 255, 255)      # 文字顏色
         
-        # 字體
-        self.font = pygame.font.Font(None, 20)
-        self.small_font = pygame.font.Font(None, 16)
+        # 字體設定 - 使用字體管理器支援繁體中文
+        from src.utils.font_manager import get_font_manager
+        font_manager = get_font_manager()
+        self.font = font_manager.get_font(20)
+        self.small_font = font_manager.get_font(16)
         
         # 裝備槽位置（圓形排列）
         self.slot_positions = self._calculate_slot_positions()

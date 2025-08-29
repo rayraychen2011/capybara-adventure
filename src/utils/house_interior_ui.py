@@ -34,10 +34,12 @@ class HouseInteriorUI:
         self.text_color = (255, 255, 255)
         self.title_color = (255, 215, 0)
         
-        # 字體
-        self.title_font = pygame.font.Font(None, 28)
-        self.text_font = pygame.font.Font(None, 20)
-        self.small_font = pygame.font.Font(None, 16)
+        # 字體 - 使用字體管理器支援繁體中文
+        from src.utils.font_manager import get_font_manager
+        font_manager = get_font_manager()
+        self.title_font = font_manager.get_font(28)
+        self.text_font = font_manager.get_font(20)
+        self.small_font = font_manager.get_font(16)
 
     def show(self, house):
         """

@@ -25,10 +25,13 @@ GAME_TITLE = "小鎮生活模擬器"
 # 遊戲每秒幀數，控制遊戲更新和畫面刷新的速度
 FPS = 60
 
+# 全域縮放係數 - 根據需求將所有東西放大十倍顯示在螢幕上
+GLOBAL_SCALE = 10.0
+
 ######################小鎮地圖設定######################
-# 小鎮總尺寸設定 - 30x30 街道的大型小鎮（足夠容納330個住宅）
-TOWN_GRID_WIDTH = 30  # 橫向街區數量
-TOWN_GRID_HEIGHT = 30  # 縱向街區數量 
+# 小鎮總尺寸設定 - 100x100 格子的超大型地圖（支援更豐富的遊戲內容）
+TOWN_GRID_WIDTH = 100  # 橫向街區數量
+TOWN_GRID_HEIGHT = 100  # 縱向街區數量 
 STREET_WIDTH = 50  # 每條街道的寬度（像素）
 BLOCK_SIZE = 150  # 每個街區的大小（像素）
 
@@ -158,18 +161,10 @@ SCENE_FOREST = "forest"
 SCENE_LAKE = "lake"
 SCENE_HOME = "home"
 
-######################地圖尺寸設定######################
-# 森林地圖尺寸（小鎮的8倍大）
-FOREST_MAP_WIDTH = TOWN_TOTAL_WIDTH * 8
-FOREST_MAP_HEIGHT = TOWN_TOTAL_HEIGHT * 8
-
-# 湖泊地圖尺寸（小鎮的10倍大）
-LAKE_MAP_WIDTH = TOWN_TOTAL_WIDTH * 10
-LAKE_MAP_HEIGHT = TOWN_TOTAL_HEIGHT * 10
 
 ######################遊戲系統設定######################
 # 初始金錢數量
-INITIAL_MONEY = 1000
+INITIAL_MONEY = 500  # 根據新需求設定初始金錢為 500 元
 
 # 物品欄設定（替代背包系統）
 ITEM_BAR_SLOTS = 10  # 物品欄格子數量
@@ -180,22 +175,35 @@ ITEM_BAR_PADDING = 5  # 格子間的間距
 # 自動存檔間隔時間，單位為秒
 AUTO_SAVE_INTERVAL = 300
 
-######################釣魚系統設定######################
-# 釣魚成功的基礎機率 (0.0 到 1.0)
-FISHING_BASE_SUCCESS_RATE = 0.3
+######################建築限制設定######################
+# 住宅數量限制
+MAX_RESIDENTIAL_BUILDINGS = 100  # 城鎮最多只能有 100 棟住宅
 
-# 釣魚動作需要的時間，單位為秒
-FISHING_TIME = 3.0
+# 蔬果園設定
+VEGETABLE_GARDEN_HARVEST_INCOME = 10  # 採摘 1 格蔬果園可獲得 10 元
+VEGETABLE_GARDEN_DAILY_GROWTH = True  # 蔬果園每天成熟一次
 
-# 魚餌系統設定
-BAIT_TYPES = {
-    "普通魚餌": {"price": 100, "multiplier": 1.0},
-    "高級魚餌": {"price": 500, "multiplier": 1.5},
-    "頂級魚餌": {"price": 1000, "multiplier": 2.0}
-}
+# 服裝店設定
+CLOTHING_STORE_OUTFIT_COUNT = 5  # 服裝店提供 5 套套裝
+CLOTHING_OUTFIT_PRICE = 300  # 每套套裝價格為 300 元
 
-# 魚類放生血量加成
-FISH_RELEASE_HEALTH_MULTIPLIER = 1.1
+# 路邊小販設定
+STREET_VENDOR_COUNT = 1  # 地圖上有 1 位路邊小販 NPC
+
+######################鐵路系統設定######################
+# 火車站設定
+TRAIN_STATION_COUNT = 10  # 火車站數量
+TRAIN_SPEED = 400.0  # 火車移動速度（像素/秒）
+TRAIN_CAPACITY = 50  # 火車載客容量
+
+# 鐵軌設定
+RAILWAY_TRACK_WIDTH = 8  # 鐵軌寬度
+RAILWAY_SIGNAL_INTERVAL = 200  # 交通號誌間隔距離
+
+# 火車顏色設定
+TRAIN_COLOR = (139, 69, 19)  # 棕色火車
+RAILWAY_COLOR = (101, 67, 33)  # 深棕色鐵軌
+TRAIN_STATION_COLOR = (139, 0, 0)  # 深紅色火車站
 
 # 血量藥水設定
 HEALTH_POTIONS = {
@@ -231,62 +239,65 @@ HEALTH_LOW_THRESHOLD = 100  # 血量低於此值時播放心跳聲並自動回�
 HEALTH_AUTO_RECOVERY_RATE = 1  # 自動回復速度（每秒回復1點）
 
 ######################建築物數量設定######################
-# 住宅建築 (依據新需求：住宅區每格放4個住宅單位)
+# 住宅建築 (依據新需求：總共100個房子，25個住宅區)
 HOUSES_PER_RESIDENTIAL_GRID = 4  # 每個住宅區格子放4個住宅單位
-RESIDENTIAL_GRID_COUNT = 100  # 住宅區格子數量（更新為實際數量）
-TOTAL_HOUSES = HOUSES_PER_RESIDENTIAL_GRID * RESIDENTIAL_GRID_COUNT  # 總住宅數量
+RESIDENTIAL_GRID_COUNT = 25  # 住宅區格子數量
+TOTAL_HOUSES = 100  # 總住宅數量 - 固定為100個房子
 
 # 宗教建築
-CHURCH_COUNT = 5  # 教堂數量 (增加)
+CHURCH_COUNT = 2  # 教堂數量
 PRIEST_COUNT = 2  # 牧師數量
-NUN_COUNT = 48  # 修女數量
+NUN_COUNT = 8  # 修女數量
 
-# 商業建築 (增加數量以配合大地圖)
-CONVENIENCE_STORE_COUNT = 25  # 便利商店數量 (增加)
-STREET_VENDOR_COUNT = 15  # 路邊小販數量 (增加)
-FISHING_SHOP_COUNT = 3  # 釣魚店數量 (增加)
-MARKET_COUNT = 2  # 市場數量 (增加)
+# 商業建築 (減少數量以配合較小地圖)
+CONVENIENCE_STORE_COUNT = 8  # 便利商店數量
+STREET_VENDOR_COUNT = 5  # 路邊小販數量
+MARKET_COUNT = 1  # 市場數量
 
 # 醫療建築
-HOSPITAL_COUNT = 8  # 醫院數量 (增加)
+HOSPITAL_COUNT = 3  # 醫院數量
 
 # 教育和娛樂建築
-SCHOOL_COUNT = 6  # 學校數量 (增加)
-PARK_COUNT = 20  # 公園數量 (增加，避免空地)
+SCHOOL_COUNT = 2  # 學校數量
+PARK_COUNT = 5  # 公園數量
 
 # 金融建築
-BANK_COUNT = 4  # 銀行數量 (增加)
+BANK_COUNT = 2  # 銀行數量
 
 # 其他商業建築
-CLOTHING_STORE_COUNT = 15  # 服裝店數量 (增加)
-TAVERN_COUNT = 12  # 酒館數量 (增加)
-GUN_SHOP_COUNT = 10  # 槍械店數量
-OFFICE_BUILDING_COUNT = 25  # 辦公大樓數量 (增加)
+CLOTHING_STORE_COUNT = 5  # 服裝店數量
+GUN_SHOP_COUNT = 3  # 槍械店數量
+OFFICE_BUILDING_COUNT = 8  # 辦公大樓數量
 
 # 基礎設施
 POWER_PLANT_COUNT = 1  # 電力場數量
 FARM_AREA_COUNT = 5  # 農田區域數量
 
+# 蔬果園設定（新增）
+VEGETABLE_GARDEN_COUNT = 10  # 蔬果園數量
+VEGETABLE_GARDEN_COLOR = (50, 205, 50)  # 蔬果園顏色 - 綠色
+
 ######################NPC職業分配設定######################
-# 總NPC數量（依據新需求：NPC數量 = 住宅總數 - 1）
-TOTAL_TOWN_NPCS = TOTAL_HOUSES - 1  # 玩家佔用一戶，其餘為NPC
+# 總NPC數量（依據新需求：99個NPC）
+TOTAL_TOWN_NPCS = 99  # 固定為99個NPC
 TOTAL_TRIBE_NPCS = 0  # 刪除部落NPC（依據需求）
 
 # 小鎮NPC職業分配（重新分配以配合新的NPC數量）
 # 每個住宅最多3個NPC（家庭成員）
 NPCS_PER_HOUSE = 3  # 每個住宅的NPC數量
-FARMER_COUNT = 50  # 農夫（增加農業人口）
-DOCTOR_COUNT = 20  # 醫生（更多醫療人員）
-NURSE_COUNT = 40  # 護士（配合醫生數量）
-GUN_SHOP_STAFF_COUNT = 15  # 槍械店員工
-VENDOR_COUNT = 25  # 路邊小販（更多商業活動）
+FARMER_COUNT = 15  # 農夫（增加，因為要在農田工作）
+DOCTOR_COUNT = 6  # 醫生
+NURSE_COUNT = 8  # 護士
+GUN_SHOP_STAFF_COUNT = 5  # 槍械店員工
+VENDOR_COUNT = 8  # 路邊小販
 STREET_VENDOR_COUNT = VENDOR_COUNT  # 為了相容性保留兩個名稱
-FISHING_SHOP_STAFF_COUNT = 20  # 釣魚店員工
-CONVENIENCE_STAFF_COUNT = 30  # 便利商店員工
-POWER_WORKER_COUNT = 25  # 電力系統員工（重要基礎設施）
-HUNTER_COUNT = 30  # 獵人（提供肉類等資源）
-# 其他職業，補足到399個NPC
-OTHER_PROFESSIONS_COUNT = 144  # 其他居民（家庭主婦、退休人員、學生等）
+CONVENIENCE_STAFF_COUNT = 10  # 便利商店員工
+CHEF_COUNT = 8  # 廚師（替換釣魚店員工）
+TEACHER_COUNT = 8  # 教師（替換電力系統員工）
+HUNTER_COUNT = 8  # 獵人
+ARTIST_COUNT = 15  # 藝術家（替換部落成員）
+# 其他職業，補足到99個NPC
+OTHER_PROFESSIONS_COUNT = 8  # 其他居民（重新計算後的數量）
 
 ######################NPC移動設定######################
 # NPC 移動速度 - 與玩家移動速度相同

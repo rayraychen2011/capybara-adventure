@@ -198,15 +198,9 @@ class TimeDisplayUI:
         }
         time_period_text = time_of_day_names.get(time_of_day.value, "⏰ 未知時段")
 
-        # 狀態資訊
+        # 狀態資訊（移除工作日顯示，只保留商店營業狀態）
         status_texts = []
-        if time_manager.is_work_time():
-            status_texts.append("💼 工作時間")
-        elif time_manager.is_work_day:
-            status_texts.append("📅 工作日")
-        else:
-            status_texts.append("🎉 休息日")
-
+        
         if time_manager.is_shop_hours():
             status_texts.append("🏪 商店營業中")
         else:
@@ -230,11 +224,7 @@ class TimeDisplayUI:
         )
 
         for status_text in status_texts:
-            color = (
-                self.work_day_color
-                if "工作" in status_text
-                else self.rest_day_color if "休息" in status_text else self.text_color
-            )
+            color = self.text_color  # 統一使用普通文字顏色
             text_surfaces.append(
                 ("status", small_font.render(status_text, True, color))
             )

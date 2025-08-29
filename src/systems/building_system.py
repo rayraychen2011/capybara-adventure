@@ -4,6 +4,7 @@ import random
 import math
 from config.settings import *
 from src.systems.furniture_system import HouseInteriorManager
+from src.utils.font_manager import FontManager
 
 
 ######################建築類別######################
@@ -29,6 +30,9 @@ class Building:
         self.x, self.y = position
         self.width, self.height = size
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+        
+        # 字體管理器
+        self.font_manager = FontManager()
 
         # 根據建築類型設定屬性
         self._setup_building_properties()
@@ -42,6 +46,20 @@ class Building:
         # 互動相關
         self.interaction_points = []
         self._create_interaction_points()
+
+    def _setup_clothing_store_outfits(self):
+        """
+        設定服裝店的套裝選項\n
+        根據新需求：提供 5 套可購買的套裝，每套價格為 300 元\n
+        """
+        if self.building_type == "clothing_store":
+            self.available_outfits = [
+                {"id": 1, "name": "休閒套裝", "price": CLOTHING_OUTFIT_PRICE, "color": (0, 100, 200)},
+                {"id": 2, "name": "正式套裝", "price": CLOTHING_OUTFIT_PRICE, "color": (50, 50, 50)},
+                {"id": 3, "name": "運動套裝", "price": CLOTHING_OUTFIT_PRICE, "color": (255, 100, 100)},
+                {"id": 4, "name": "夏日套裝", "price": CLOTHING_OUTFIT_PRICE, "color": (255, 255, 100)},
+                {"id": 5, "name": "冬季套裝", "price": CLOTHING_OUTFIT_PRICE, "color": (100, 50, 150)}
+            ]
 
     def _setup_building_properties(self):
         """
@@ -89,11 +107,44 @@ class Building:
             self.services = ["特色商品"]
             self.staff_count = 1
 
+        elif self.building_type == "clothing_store":
+            self.name = "服裝店"
+            self.color = (255, 20, 147)  # 深粉色
+            self.services = ["購買套裝"]
+            self.staff_count = 2
+            # 服裝店專用屬性
+            self.available_outfits = []
+            self._setup_clothing_store_outfits()
+
         elif self.building_type == "power_plant":
             self.name = "電力場"
             self.color = (255, 255, 0)  # 黃色
             self.services = ["電力供應"]
             self.staff_count = 30
+
+        elif self.building_type == "park":
+            self.name = "公園"
+            self.color = (50, 205, 50)  # 綠色
+            self.services = ["休閒娛樂"]
+            self.staff_count = 3
+
+        elif self.building_type == "clothing_store":
+            self.name = "服裝店"
+            self.color = (255, 20, 147)  # 粉色
+            self.services = ["買衣服", "換裝"]
+            self.staff_count = 3
+
+        elif self.building_type == "office_building":
+            self.name = "辦公大樓"
+            self.color = (169, 169, 169)  # 灰色
+            self.services = ["辦公服務"]
+            self.staff_count = 15
+
+        elif self.building_type == "factory":
+            self.name = "工廠"
+            self.color = (105, 105, 105)  # 深灰色
+            self.services = ["生產製造"]
+            self.staff_count = 20
 
         elif self.building_type == "house":
             self.name = "住宅"
@@ -153,12 +204,91 @@ class Building:
         if not self.is_open:
             return {"success": False, "message": f"{self.name}已關閉"}
 
+        # 服裝店特殊互動
+        if self.building_type == "clothing_store":
+            return self._handle_clothing_store_interaction(player)
+        
+        # 其他建築的通用互動
         return {
             "success": True,
             "building": self,
             "services": self.services,
             "message": f"歡迎來到{self.name}！",
         }
+
+    def _handle_clothing_store_interaction(self, player):
+        """
+        處理服裝店互動\n
+        根據新需求：提供 5 套可購買的套裝，每套價格為 300 元\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        \n
+        回傳:\n
+        dict: 互動結果\n
+        """
+        message = f"歡迎來到{self.name}！\\n\\n可購買的套裝：\\n"
+        
+        for i, outfit in enumerate(self.available_outfits, 1):
+            owned_status = "已擁有" if outfit['id'] in player.owned_outfits else f"${outfit['price']}"
+            message += f"{i}. {outfit['name']} - {owned_status}\\n"
+        
+        message += f"\\n您目前有 ${player.get_money()}\\n"
+        message += "按數字鍵 1-5 購買對應套裝"
+        
+        return {
+            "success": True,
+            "building": self,
+            "building_type": "clothing_store",
+            "message": message,
+            "available_outfits": self.available_outfits
+        }
+
+    def purchase_outfit(self, player, outfit_id):
+        """
+        購買套裝\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        outfit_id (int): 套裝ID\n
+        \n
+        回傳:\n
+        dict: 購買結果\n
+        """
+        if self.building_type != "clothing_store":
+            return {"success": False, "message": "此建築不是服裝店"}
+        
+        # 尋找對應的套裝
+        target_outfit = None
+        for outfit in self.available_outfits:
+            if outfit['id'] == outfit_id:
+                target_outfit = outfit
+                break
+        
+        if not target_outfit:
+            return {"success": False, "message": "找不到指定的套裝"}
+        
+        # 檢查是否已擁有
+        if outfit_id in player.owned_outfits:
+            return {"success": False, "message": f"您已經擁有{target_outfit['name']}"}
+        
+        # 檢查金錢是否足夠
+        if player.get_money() < target_outfit['price']:
+            return {
+                "success": False, 
+                "message": f"金錢不足！需要 ${target_outfit['price']}，您有 ${player.get_money()}"
+            }
+        
+        # 進行購買
+        if player.spend_money(target_outfit['price']):
+            player.owned_outfits.append(outfit_id)
+            return {
+                "success": True, 
+                "message": f"成功購買 {target_outfit['name']}！",
+                "outfit": target_outfit
+            }
+        else:
+            return {"success": False, "message": "購買失敗"}
 
     def draw(self, screen):
         """
@@ -171,11 +301,7 @@ class Building:
         pygame.draw.rect(screen, self.color, self.rect)
         pygame.draw.rect(screen, (0, 0, 0), self.rect, 2)
 
-        # 繪製建築名稱
-        font = pygame.font.Font(None, 20)
-        text = font.render(self.name, True, (0, 0, 0))
-        text_rect = text.get_rect(center=self.rect.center)
-        screen.blit(text, text_rect)
+        # 建築物名稱標籤已移除（依據新需求）
 
         # 繪製互動點
         for point in self.interaction_points:
@@ -652,7 +778,7 @@ class ResidentialHouse(Building):
             pygame.draw.circle(screen, (255, 255, 0), (center_x, center_y), 8)
             
             # 繪製家的標誌文字
-            font = pygame.font.Font(None, 16)
+            font = self.font_manager.get_font(16)
             text = font.render("家", True, (0, 0, 0))
             text_rect = text.get_rect(center=(center_x, center_y))
             screen.blit(text, text_rect)
@@ -692,10 +818,8 @@ class ResidentialHouse(Building):
                 screen, self.interior, self.x, self.y, camera_x, camera_y
             )
         
-        # 繪製內部檢視標記
-        font = pygame.font.Font(None, 16)
-        title_text = font.render(f"{self.name} - 內部檢視", True, (0, 0, 0))
-        screen.blit(title_text, (screen_x, screen_y - 20))
+        # 繪製內部檢視標記（已移除名稱顯示，依據新需求）
+        # 保留房間內部檢視功能但不顯示標題
 
     def get_resident_info(self):
         """

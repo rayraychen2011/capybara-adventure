@@ -192,11 +192,15 @@ class MinimapUI:
         # 假設每個地形格子的大小 - 與 TerrainBasedSystem 的 tile_size 匹配
         terrain_cell_size = 40  # 與 TerrainBasedSystem 保持一致
         
+        # 計算小地圖縮放比例，讓整個地圖都能顯示
+        minimap_scale = min(MINIMAP_WIDTH / (terrain_width * terrain_cell_size), 
+                           MINIMAP_HEIGHT / (terrain_height * terrain_cell_size)) * 0.8  # 0.8是留邊
+        
         for row in range(terrain_height):
             for col in range(terrain_width):
-                # 計算地形格子的世界座標
-                world_x = col * terrain_cell_size
-                world_y = row * terrain_cell_size
+                # 計算地形格子的世界座標（中心點）
+                world_x = col * terrain_cell_size + terrain_cell_size // 2
+                world_y = row * terrain_cell_size + terrain_cell_size // 2
                 
                 # 轉換為小地圖座標
                 map_x, map_y = self.world_to_minimap(world_x, world_y)
@@ -205,24 +209,32 @@ class MinimapUI:
                 if 0 <= map_x < MINIMAP_WIDTH and 0 <= map_y < MINIMAP_HEIGHT:
                     terrain_type = terrain_data[row][col]
                     
-                    # 根據地形類型選擇顏色
+                    # 根據地形類型選擇顏色 - 更鮮明的顏色
                     if terrain_type == 0:  # 草地
-                        color = (34, 139, 34)
+                        color = (50, 205, 50)    # 鮮綠色
                     elif terrain_type == 1:  # 森林
-                        color = (0, 100, 0)
+                        color = (34, 139, 34)    # 深綠色
                     elif terrain_type == 2:  # 水面
-                        color = (0, 191, 255)
+                        color = (0, 191, 255)    # 天藍色
                     elif terrain_type == 3:  # 道路
-                        color = (105, 105, 105)
+                        color = (169, 169, 169)  # 淺灰色
                     elif terrain_type == 4:  # 高速公路
-                        color = (64, 64, 64)
-                    elif terrain_type >= 5:  # 建築區域
-                        color = (139, 69, 19)
+                        color = (105, 105, 105)  # 中灰色
+                    elif terrain_type == 5:  # 住宅區
+                        color = (255, 165, 0)    # 橙色
+                    elif terrain_type == 6:  # 商業區
+                        color = (255, 215, 0)    # 金色
+                    elif terrain_type == 7:  # 工業區
+                        color = (128, 128, 128)  # 灰色
+                    elif terrain_type == 8:  # 農地
+                        color = (154, 205, 50)   # 黃綠色
+                    elif terrain_type == 9:  # 山地
+                        color = (139, 69, 19)    # 棕色
                     else:
                         color = (100, 100, 100)  # 預設
                     
-                    # 計算在小地圖上的大小
-                    cell_size = max(1, int(terrain_cell_size * self.zoom_level * 0.1))
+                    # 計算在小地圖上的大小 - 加大顯示尺寸
+                    cell_size = max(2, int(terrain_cell_size * self.zoom_level * 0.15))
                     
                     # 繪製地形格子
                     pygame.draw.rect(surface, color, 
@@ -277,7 +289,10 @@ class MinimapUI:
         參數:\n
         screen (pygame.Surface): 主螢幕表面\n
         """
-        font = pygame.font.Font(None, 20)
+        # 使用字體管理器支援繁體中文
+        from src.utils.font_manager import get_font_manager
+        font_manager = get_font_manager()
+        font = font_manager.get_font(20)
         zoom_text = f"縮放: {self.zoom_level:.1f}x"
         text_surface = font.render(zoom_text, True, (255, 255, 255))
         

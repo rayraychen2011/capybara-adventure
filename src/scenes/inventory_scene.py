@@ -112,7 +112,8 @@ class InventoryScene(Scene):
         
         # 顯示背包容量
         inventory = self.player.get_inventory_list()
-        item_count = sum(inventory.values())
+        # 由於物品系統已刪除，inventory 是空列表，所以物品數量為0
+        item_count = len(inventory) if isinstance(inventory, list) else sum(inventory.values())
         capacity = self.player.inventory_capacity
         capacity_text = self.font_manager.render_text(
             f"容量: {item_count}/{capacity}", 
@@ -130,14 +131,18 @@ class InventoryScene(Scene):
         """
         inventory = self.player.get_inventory_list()
         
-        # 獲取所有物品的鍵值列表
-        item_keys = list(inventory.keys())
+        # 由於物品系統已刪除，inventory 是空列表
+        if isinstance(inventory, list):
+            # 如果是列表（物品系統已刪除），顯示空的背包格子
+            item_keys = []
+        else:
+            # 如果是字典，獲取所有物品的鍵值列表
+            item_keys = list(inventory.keys())
         
-        row = 0
-        col = 0
-        
-        for i, item_name in enumerate(item_keys):
-            quantity = inventory[item_name]
+        # 繪製空的背包格子
+        for i in range(self.rows * self.cols):
+            row = i // self.cols
+            col = i % self.cols
             
             # 計算格子位置
             x = self.start_x + col * (self.item_size + self.item_padding)
@@ -147,40 +152,47 @@ class InventoryScene(Scene):
             item_rect = pygame.Rect(x, y, self.item_size, self.item_size)
             
             # 繪製格子背景
-            if i == self.selected_item_index:
+            if i == self.selected_item_index and i < len(item_keys):
                 # 選中的格子用亮色背景
                 pygame.draw.rect(screen, (100, 100, 150), item_rect)
             else:
                 # 普通格子用深色背景
-                pygame.draw.rect(screen, (60, 60, 60), item_rect)
+                pygame.draw.rect(screen, (50, 50, 50), item_rect)
             
             # 繪製格子邊框
-            pygame.draw.rect(screen, TEXT_COLOR, item_rect, 2)
+            pygame.draw.rect(screen, (200, 200, 200), item_rect, 2)
             
-            # 繪製物品圖示（這裡用顏色代替）
-            item_color = self._get_item_color(item_name)
-            inner_rect = pygame.Rect(x + 8, y + 8, self.item_size - 16, self.item_size - 16)
-            pygame.draw.rect(screen, item_color, inner_rect)
-            
-            # 繪製物品名稱
-            name_text = self.font_manager.render_text(item_name, SMALL_FONT_SIZE, TEXT_COLOR)
-            name_rect = name_text.get_rect(center=(x + self.item_size // 2, y + self.item_size + 15))
-            screen.blit(name_text, name_rect)
-            
-            # 繪製數量
-            if quantity > 1:
-                qty_text = self.font_manager.render_text(str(quantity), SMALL_FONT_SIZE, (255, 255, 0))
-                screen.blit(qty_text, (x + self.item_size - 20, y + 5))
-            
-            # 移動到下一個位置
-            col += 1
-            if col >= self.items_per_row:
-                col = 0
-                row += 1
+            # 如果有物品，繪製物品資訊
+            if i < len(item_keys):
+                item_name = item_keys[i]
+                quantity = inventory[item_name] if not isinstance(inventory, list) else 0
+                
+                # 繪製物品名稱（簡化顯示）
+                if len(item_name) > 6:
+                    display_name = item_name[:5] + "..."
+                else:
+                    display_name = item_name
+                
+                name_text = self.font_manager.render_text(
+                    display_name, 
+                    12, 
+                    TEXT_COLOR
+                )
+                name_rect = name_text.get_rect(center=(x + self.item_size // 2, y + 20))
+                screen.blit(name_text, name_rect)
+                
+                # 繪製數量
+                if quantity > 1:
+                    qty_text = self.font_manager.render_text(
+                        str(quantity), 
+                        10, 
+                        (255, 255, 0)
+                    )
+                    screen.blit(qty_text, (x + self.item_size - 15, y + self.item_size - 15))
         
         # 如果沒有物品，顯示提示
         if not item_keys:
-            empty_text = self.font_manager.render_text("背包是空的", LARGE_FONT_SIZE, (128, 128, 128))
+            empty_text = self.font_manager.render_text("背包空空如也", 20, (128, 128, 128))
             empty_rect = empty_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
             screen.blit(empty_text, empty_rect)
     

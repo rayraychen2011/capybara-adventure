@@ -47,8 +47,10 @@ class TerrainMapLoader:
             5: "住宅區",
             6: "商業區",
             7: "公園設施",
-            8: "停車場",
-            9: "山丘"
+            8: "農地",  # 新增農地地形
+            9: "山丘",
+            10: "鐵軌",
+            11: "火車站"
         }
         
         # 地形顏色對應表 - 用於渲染顯示
@@ -61,8 +63,10 @@ class TerrainMapLoader:
             5: (255, 255, 224),  # 淺黃色 - 住宅區
             6: (255, 165, 0),    # 橘色 - 商業區
             7: (50, 205, 50),    # 綠色 - 公園設施
-            8: (192, 192, 192),  # 淺灰色 - 停車場
-            9: (160, 82, 45)     # 棕色 - 山丘
+            8: (205, 133, 63),   # 土黃色 - 農地
+            9: (160, 82, 45),    # 棕色 - 山丘
+            10: (139, 69, 19),   # 深棕色 - 鐵軌
+            11: (220, 20, 60)    # 深紅色 - 火車站
         }
         
         # 地圖數據儲存
@@ -156,7 +160,7 @@ class TerrainMapLoader:
         參數:\n
         x (int): X座標（列）\n
         y (int): Y座標（行）\n
-        terrain_code (int): 地形編碼，必須在0-9範圍內\n
+        terrain_code (int): 地形編碼，必須在有效範圍內\n
         \n
         回傳:\n
         bool: 設定成功回傳True，失敗回傳False\n
@@ -254,8 +258,9 @@ class TerrainMapLoader:
                 font_manager = get_font_manager()
                 font = font_manager.get_font(18)
             else:
-                # 使用預設字體
-                font = pygame.font.Font(None, 18)
+                # 也使用字體管理器確保繁體中文支援
+                font_manager = get_font_manager()
+                font = font_manager.get_font(18)
         except:
             # 字體載入失敗，使用預設字體
             font = pygame.font.Font(None, 18)
@@ -359,8 +364,8 @@ def main():
     # 初始化地圖載入器
     map_loader = TerrainMapLoader()
     
-    # 載入Cupertino地圖
-    if map_loader.load_from_csv("config/cupertino_map.csv"):
+    # 載入Cupertino地圖 - 使用編輯版本
+    if map_loader.load_from_csv("config/cupertino_map_edited.csv"):
         # 顯示地圖資訊
         map_info = map_loader.get_map_info()
         print("\n=== 地圖資訊 ===")
@@ -377,5 +382,6 @@ def main():
     else:
         print("地圖載入失敗")
 
-# 直接執行測試
-main()
+# 只在直接執行此檔案時才運行測試
+if __name__ == "__main__":
+    main()

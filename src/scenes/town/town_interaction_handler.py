@@ -48,7 +48,7 @@ class TownInteractionHandler:
         if self.last_interaction_time > 0:
             self.last_interaction_time -= dt
 
-    def handle_interaction(self, terrain_system, npc_manager, vehicle_manager):
+    def handle_interaction(self, terrain_system, npc_manager, vehicle_manager=None):
         """
         處理玩家互動輸入\n
         \n
@@ -68,8 +68,8 @@ class TownInteractionHandler:
         
         # 按優先順序檢查互動對象
         
-        # 1. 檢查載具互動（最高優先級）
-        if self._check_vehicle_interaction(vehicle_manager, player_pos):
+        # 1. 檢查載具互動（最高優先級）- 如果載具管理器存在
+        if vehicle_manager and self._check_vehicle_interaction(vehicle_manager, player_pos):
             return True
         
         # 2. 檢查 NPC 互動
@@ -87,6 +87,105 @@ class TownInteractionHandler:
         # 沒有找到互動對象
         self.ui_manager.show_message("附近沒有可互動的對象", 1.5)
         return False
+
+    def handle_right_click_interaction(self, mouse_pos, terrain_system, camera_offset=(0, 0)):
+        """
+        處理右鍵點擊建築物互動\n
+        根據新需求：槍械店、便利商店、路邊小販、教堂、服裝店都能右鍵互動\n
+        \n
+        參數:\n
+        mouse_pos (tuple): 滑鼠點擊位置 (螢幕座標)\n
+        terrain_system (TerrainBasedSystem): 地形系統\n
+        camera_offset (tuple): 攝影機偏移量 (camera_x, camera_y)\n
+        \n
+        回傳:\n
+        bool: 是否有執行互動\n
+        """
+        # 檢查互動冷卻
+        if self.last_interaction_time > 0:
+            return False
+        
+        # 將螢幕座標轉換為世界座標
+        camera_x, camera_y = camera_offset
+        world_x = mouse_pos[0] + camera_x
+        world_y = mouse_pos[1] + camera_y
+        
+        # 檢查點擊位置是否有建築物
+        for building in terrain_system.buildings:
+            if hasattr(building, 'rect'):
+                # 檢查滑鼠點擊是否在建築物範圍內
+                if building.rect.collidepoint(world_x, world_y):
+                    # 檢查是否為可右鍵互動的建築物類型
+                    interactive_building_types = [
+                        "gun_shop",           # 槍械店
+                        "convenience_store",  # 便利商店
+                        "street_vendor",      # 路邊小販
+                        "church",             # 教堂
+                        "clothing_store"      # 服裝店
+                    ]
+                    
+                    if hasattr(building, 'building_type') and building.building_type in interactive_building_types:
+                        # 執行建築物右鍵互動
+                        result = self._handle_right_click_building(building)
+                        if result:
+                            self._set_interaction_cooldown()
+                            return True
+        
+        # 沒有找到可互動的建築物
+        self.ui_manager.show_message("點擊的位置沒有可互動的建築物", 1.5)
+        return False
+
+    def _handle_right_click_building(self, building):
+        """
+        處理建築物右鍵互動\n
+        \n
+        參數:\n
+        building (Building): 建築物物件\n
+        \n
+        回傳:\n
+        bool: 是否成功互動\n
+        """
+        try:
+            # 根據建築物類型提供不同的右鍵互動
+            building_type = building.building_type
+            building_name = getattr(building, 'name', '建築物')
+            
+            if building_type == "gun_shop":
+                self.ui_manager.show_message(f"右鍵進入 {building_name}\\n可購買武器和彈藥", 3.0)
+                # 這裡可以觸發槍械店購買介面
+                
+            elif building_type == "convenience_store":
+                self.ui_manager.show_message(f"右鍵進入 {building_name}\\n可購買日用品和食物", 3.0)
+                # 這裡可以觸發便利商店購買介面
+                
+            elif building_type == "street_vendor":
+                self.ui_manager.show_message(f"右鍵與 {building_name} 互動\\n有特色商品販售", 3.0)
+                # 這裡可以觸發路邊小販購買介面
+                
+            elif building_type == "church":
+                self.ui_manager.show_message(f"右鍵進入 {building_name}\\n可以祈禱和懺悔", 3.0)
+                # 這裡可以觸發教堂祈禱介面
+                
+            elif building_type == "clothing_store":
+                # 服裝店特殊互動
+                result = building.interact(self.player)
+                if result.get("success", False):
+                    message = result.get("message", f"右鍵進入 {building_name}")
+                    self.ui_manager.show_message(message, 3.0)
+                    
+                    # 如果有可購買的套裝，顯示提示
+                    if result.get("building_type") == "clothing_store":
+                        self.ui_manager.show_message("按數字鍵 1-5 購買套裝", 2.0)
+                else:
+                    self.ui_manager.show_message(f"無法與 {building_name} 互動", 2.0)
+            
+            print(f"右鍵互動：{building_name} ({building_type})")
+            return True
+            
+        except Exception as e:
+            print(f"右鍵建築物互動錯誤: {e}")
+            self.ui_manager.show_message("建築物互動出現問題", 2.0)
+            return False
 
     def _check_vehicle_interaction(self, vehicle_manager, player_pos):
         """
@@ -360,7 +459,7 @@ class TownInteractionHandler:
         """
         self.last_interaction_time = self.interaction_cooldown
 
-    def get_nearby_interactables(self, terrain_system, npc_manager, vehicle_manager):
+    def get_nearby_interactables(self, terrain_system, npc_manager, vehicle_manager=None):
         """
         獲取附近可互動對象的資訊\n
         \n
@@ -375,14 +474,15 @@ class TownInteractionHandler:
         player_pos = (self.player.x, self.player.y)
         interactables = []
         
-        # 檢查載具
-        nearby_vehicle = vehicle_manager.get_nearby_vehicle(player_pos, self.interaction_range)
-        if nearby_vehicle:
-            interactables.append({
-                "type": "vehicle",
-                "name": nearby_vehicle.vehicle_type,
-                "distance": self._calculate_distance(player_pos, (nearby_vehicle.x, nearby_vehicle.y))
-            })
+        # 檢查載具（如果載具管理器存在）
+        if vehicle_manager:
+            nearby_vehicle = vehicle_manager.get_nearby_vehicle(player_pos, self.interaction_range)
+            if nearby_vehicle:
+                interactables.append({
+                    "type": "vehicle",
+                    "name": nearby_vehicle.vehicle_type,
+                    "distance": self._calculate_distance(player_pos, (nearby_vehicle.x, nearby_vehicle.y))
+                })
         
         # 檢查 NPC
         nearby_npc = npc_manager.get_npc_at_position(player_pos, self.interaction_range)

@@ -13,8 +13,7 @@ from src.scenes.inventory_scene import InventoryScene
 from src.utils.font_manager import init_font_system
 from src.systems.time_system import TimeManager
 from src.utils.time_ui import TimeDisplayUI
-from src.systems.power_system import PowerManager
-from src.utils.power_ui import PowerDisplayUI
+from src.systems.music_system import MusicManager
 
 
 ######################遊戲引擎######################
@@ -57,11 +56,8 @@ class GameEngine:
         # 建立時間顯示 UI - 置中顯示在螢幕正上方
         self.time_display = TimeDisplayUI(position="top_center", style="compact")
 
-        # 建立電力管理系統
-        self.power_manager = PowerManager(time_manager=self.time_manager)
-
-        # 建立電力顯示 UI
-        self.power_display = PowerDisplayUI(self.power_manager)
+        # 建立音樂管理系統
+        self.music_manager = MusicManager()
 
         # 當前活躍的玩家實例（所有場景共享）
         self.current_player = None
@@ -101,10 +97,10 @@ class GameEngine:
             menu_scene = MenuScene(self.state_manager)
             self.scene_manager.register_scene("menu", menu_scene)
 
-            # 建立小鎮場景，傳入時間管理器和電力管理器
+            # 建立小鎮場景，傳入時間管理器和音樂管理器
             print("開始創建 TownScene...")
             town_scene = TownScene(
-                self.state_manager, self.time_manager, self.power_manager
+                self.state_manager, self.time_manager, self.music_manager
             )
             print("TownScene 創建完成")
             self.scene_manager.register_scene(SCENE_TOWN, town_scene)
@@ -127,6 +123,11 @@ class GameEngine:
             # 建立背包場景
             inventory_scene = InventoryScene(self.state_manager, self.current_player)
             self.scene_manager.register_scene("inventory", inventory_scene)
+
+            # 建立教堂內部場景
+            from src.scenes.church_interior_scene import ChurchInteriorScene
+            church_interior_scene = ChurchInteriorScene()
+            self.scene_manager.register_scene("教堂內部", church_interior_scene)
 
             print(f"成功註冊 {self.scene_manager.get_scene_count()} 個場景")
 
@@ -255,10 +256,6 @@ class GameEngine:
                     self._show_hotkey_help()
                     continue
 
-                # 電力系統快捷鍵處理
-                if self.state_manager.is_state(GameState.PLAYING):
-                    self.power_display.handle_key_input(event.key)
-
             # 讓當前場景處理事件
             event_handled = self.scene_manager.handle_event(event)
 
@@ -314,9 +311,6 @@ class GameEngine:
                 self.time_manager.update(dt * 2)  # 補償跳過的時間
 
             # 電力系統 - 每3幀更新一次
-            if frame_count % 3 == 0:
-                self.power_manager.update(dt * 3)
-
             # 最低優先級：UI 更新
             if frame_count % 4 == 0:
                 self.time_display.update(dt * 4)
@@ -343,8 +337,6 @@ class GameEngine:
         # 繪製時間顯示 UI（在遊戲進行中才顯示）
         if self.state_manager.is_state(GameState.PLAYING):
             self.time_display.draw(self.screen, self.time_manager)
-            # 繪製電力系統 UI
-            self.power_display.draw(self.screen)
 
         # 根據遊戲狀態繪製額外的 UI
         if self.state_manager.is_state(GameState.PAUSED):
@@ -430,6 +422,10 @@ class GameEngine:
         釋放遊戲資源，確保程式正常退出\n
         """
         try:
+            # 清理音樂管理器
+            if hasattr(self, 'music_manager') and self.music_manager:
+                self.music_manager.cleanup()
+                
             # 清理場景管理器
             self.scene_manager.cleanup()
 

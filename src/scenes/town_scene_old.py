@@ -15,6 +15,7 @@ from src.systems.road_system import RoadManager
 from src.systems.vehicle_system import VehicleManager
 from src.systems.tile_system import TileMapManager
 from src.systems.terrain_based_system import TerrainBasedSystem
+from src.systems.building_label_system import BuildingLabelSystem
 from config.settings import *
 
 
@@ -83,6 +84,18 @@ class TownScene(Scene):
         # 建立載具管理器
         self.vehicle_manager = VehicleManager()
 
+        # 建立野生動物管理器
+        from src.systems.wildlife.wildlife_manager import WildlifeManager
+        self.wildlife_manager = WildlifeManager()
+
+        # 建立狩獵系統
+        from src.systems.hunting_system import HuntingSystem
+        self.hunting_system = HuntingSystem()
+
+        # 建立射擊系統
+        from src.systems.shooting_system import ShootingSystem
+        self.shooting_system = ShootingSystem()
+
         # 定義小鎮邊界 (使用地圖尺寸)
         town_bounds = (
             0, 0, 
@@ -132,6 +145,9 @@ class TownScene(Scene):
         if self.power_manager:
             self._register_power_workers()
 
+        # 設置野生動物系統
+        self._setup_wildlife_system(town_bounds)
+
         # 生成初始載具
         self.vehicle_manager.spawn_initial_vehicles()
 
@@ -147,7 +163,151 @@ class TownScene(Scene):
         # 時間顯示UI系統（頂部中央顯示）
         self.time_ui = TimeDisplayUI(position="top_center", style="compact")
 
+        # 建築標籤系統
+        self.building_label_system = BuildingLabelSystem()
+
+        # 商店管理系統
+        from src.systems.shop_system import ShopUI
+        self.shop_manager = type('ShopManager', (), {'shop_ui': ShopUI()})()
+
         print("大型小鎮場景已建立 (基於地形系統)")
+
+    def _setup_wildlife_system(self, town_bounds):
+        """
+        設置野生動物系統\n
+        \n
+        參數:\n
+        town_bounds (tuple): 小鎮邊界\n
+        """
+        # 設置地形系統引用
+        self.wildlife_manager.set_terrain_system(self.terrain_system)
+        
+        # 設置棲息地邊界（從地形系統獲取森林和湖泊區域）
+        forest_areas = self.terrain_system.get_areas_by_terrain_type(1)  # 森林地形代碼1
+        lake_areas = self.terrain_system.get_areas_by_terrain_type(2)    # 湖泊地形代碼2
+        
+        if forest_areas:
+            # 使用第一個最大的森林區域
+            largest_forest = max(forest_areas, key=lambda area: area[2] * area[3])
+            self.wildlife_manager.set_habitat_bounds(largest_forest, lake_areas[0] if lake_areas else (0, 0, 100, 100))
+        else:
+            # 備用森林和湖泊區域
+            forest_bounds = (100, 100, 800, 600)
+            lake_bounds = (1000, 200, 400, 300)
+            self.wildlife_manager.set_habitat_bounds(forest_bounds, lake_bounds)
+        
+        # 初始化野生動物群體
+        self.wildlife_manager.initialize_animals("all")
+        
+        # 設置玩家攻擊回調
+        self.wildlife_manager.set_player_attack_callback(self._handle_animal_attack_player)
+        
+        print("野生動物系統設置完成")
+
+    def _handle_animal_attack_player(self, damage, animal):
+        """
+        處理動物攻擊玩家事件\n
+        \n
+        參數:\n
+        damage (int): 傷害值\n
+        animal (Animal): 攻擊的動物\n
+        """
+        # 讓玩家受到傷害
+        self.player.take_damage(damage)
+        print(f"🐾 {animal.animal_type.value} 攻擊了你！造成 {damage} 點傷害")
+        
+        # 動物攻擊後重置標記
+        animal.has_attacked_player = False
+        animal.attack_damage = 0
+
+    def _handle_hunt_result(self, hunt_result):
+        """
+        處理狩獵結果\n
+        \n
+        參數:\n
+        hunt_result (dict): 狩獵結果\n
+        """
+        if hunt_result["hit"] and hunt_result["kill"]:
+            if hunt_result.get("protected", False):
+                # 保育類動物懲罰
+                penalty = hunt_result["penalty"]
+                self.player.money += penalty["money"]  # 罰款（負數）
+                print(f"💸 保育類動物罰款: ${abs(penalty['money'])}")
+            else:
+                # 正常狩獵獎勵
+                rewards = hunt_result["rewards"]
+                self.player.money += rewards["money"]
+                print(f"💰 狩獵獎勵: ${rewards['money']}")
+
+    def _handle_tree_chopping(self):
+        """
+        處理砍伐樹木（Q鍵）\n
+        \n
+        回傳:\n
+        bool: True 表示事件已處理\n
+        """
+        # 檢查玩家是否裝備斧頭
+        if not self.player.can_chop():
+            print("❌ 砍伐樹木需要裝備斧頭！請按中鍵選擇武器")
+            return True
+        
+        # 尋找玩家附近的樹木
+        player_pos = self.player.get_center_position()
+        player_rect = pygame.Rect(player_pos[0] - 40, player_pos[1] - 40, 80, 80)
+        
+        # 檢查森林區域中的樹木
+        trees_to_chop = []
+        for forest_area in self.terrain_system.forest_areas:
+            for tree in forest_area['trees']:
+                tree_rect = tree['collision_rect']
+                if player_rect.colliderect(tree_rect):
+                    trees_to_chop.append((forest_area, tree))
+        
+        if trees_to_chop:
+            # 砍伐第一棵樹
+            forest_area, tree = trees_to_chop[0]
+            
+            # 從森林區域中移除樹木
+            forest_area['trees'].remove(tree)
+            
+            print("🪓 樹木被砍倒了！")
+            # 可以添加木材獎勵
+            self.player.money += 20  # 木材獎勵
+            print("💰 獲得木材獎勵: $20")
+        else:
+            print("❌ 附近沒有樹木可以砍伐")
+        
+        return True
+
+    def _handle_building_click(self, mouse_pos, camera_offset):
+        """
+        處理建築物點擊\n
+        \n
+        參數:\n
+        mouse_pos (tuple): 滑鼠位置\n
+        camera_offset (tuple): 攝影機偏移量\n
+        \n
+        回傳:\n
+        bool: True 表示事件已處理\n
+        """
+        # 將滑鼠位置轉換為世界座標
+        world_x = mouse_pos[0] + camera_offset[0]
+        world_y = mouse_pos[1] + camera_offset[1]
+        
+        # 檢查是否點擊了建築物
+        clicked_building = None
+        for building in self.terrain_system.buildings:
+            if building.rect.collidepoint(world_x, world_y):
+                clicked_building = building
+                break
+        
+        if clicked_building:
+            print(f"🏢 點擊建築物: {clicked_building.building_type}")
+            # 處理建築物互動（已有的邏輯）
+            # 這裡可以加入原有的商店界面等
+            return True
+        
+        return False
 
     def _setup_fallback_systems(self):
         """
@@ -715,6 +875,34 @@ class TownScene(Scene):
         player_position = self.player.get_center_position()
         self.npc_manager.update_optimized(dt, player_position)
 
+        # 更新狩獵和射擊系統
+        self.shooting_system.update(dt)
+        self.hunting_system.update_targeting(dt)
+        
+        # 更新狩獵目標選擇（如果在狩獵模式）
+        if self.hunting_system.hunting_mode_active:
+            mouse_pos = pygame.mouse.get_pos()
+            camera_offset = (self.camera_x, self.camera_y)
+            animals_in_range = self.hunting_system.find_animals_in_range(
+                player_position, self.wildlife_manager
+            )
+            self.hunting_system.update_target_selection(mouse_pos, camera_offset, animals_in_range)
+
+        # 更新野生動物系統
+        if frame_count % 2 == 0:  # 每隔一幀更新野生動物
+            self.wildlife_manager.update(dt, player_position, "town")
+            
+            # 檢查動物攻擊玩家
+            for animal in self.wildlife_manager.animals:
+                if animal.has_attacked_player:
+                    self._handle_animal_attack_player(animal.attack_damage, animal)
+
+        # 檢查子彈與動物的碰撞
+        if self.shooting_system.get_bullet_count() > 0:
+            bullet_hits = self.shooting_system.check_bullet_collisions(self.wildlife_manager.animals)
+            for hit_info in bullet_hits:
+                print(f"💥 子彈命中 {hit_info['target'].animal_type.value}！")
+
         # 最低優先級：互動檢查（移除場景切換檢查）
         if frame_count % 4 == 0:  # 每隔三幀檢查一次
             # 移除 self._check_scene_transitions() - 改由地形系統處理生態切換
@@ -907,21 +1095,120 @@ class TownScene(Scene):
             else:
                 print(result.get('message', '無法互動'))
         else:
-            # 預設互動訊息
-            interaction_messages = {
-                "gun_shop": f"{building_name}：歡迎來到槍械店！需要武器嗎？",
-                "hospital": f"{building_name}：醫院為您服務，需要治療嗎？", 
-                "convenience_store": f"{building_name}：便利商店歡迎您！",
-                "church": f"{building_name}：願神保佑你！",
-                "fishing_shop": f"{building_name}：釣魚用品應有盡有！",
-                "market": f"{building_name}：新鮮商品，快來選購！",
-                "street_vendor": f"{building_name}：小攤販，便宜又好吃！",
-                "power_plant": f"{building_name}：電力供應中心，請勿靠近！",
-                "residential": f"{building_name}：這是私人住宅。"
-            }
+            # 商店類型建築開啟商業界面
+            if building_type in ["gun_shop", "convenience_store", "street_vendor", "clothing_store"]:
+                print(f"調試: 偵測到商店類型建築 {building_type}，準備開啟商業界面")
+                self._open_shop_interface(building_type, building_name)
+            elif building_type == "church":
+                # 教堂特殊處理 - 切換到教堂內部場景
+                print(f"進入{building_name}")
+                self.transition_target = "教堂內部"
+            else:
+                # 預設互動訊息
+                interaction_messages = {
+                    "hospital": f"{building_name}：醫院為您服務，需要治療嗎？", 
+                    "fishing_shop": f"{building_name}：釣魚用品應有盡有！",
+                    "market": f"{building_name}：新鮮商品，快來選購！",
+                    "power_plant": f"{building_name}：電力供應中心，請勿靠近！",
+                    "residential": f"{building_name}：這是私人住宅。"
+                }
 
-            message = interaction_messages.get(building_type, f"{building_name}：您好！")
-            print(message)
+                message = interaction_messages.get(building_type, f"{building_name}：您好！")
+                print(message)
+
+    def _open_shop_interface(self, shop_type, shop_name):
+        """
+        開啟商店界面\n
+        \n
+        參數:\n
+        shop_type (str): 商店類型\n
+        shop_name (str): 商店名稱\n
+        """
+        print(f"調試: _open_shop_interface 被呼叫，shop_type={shop_type}, shop_name={shop_name}")
+        
+        # 根據商店類型獲取商品列表
+        items = self._get_shop_items(shop_type)
+        print(f"調試: 獲取到商品列表，數量={len(items)}")
+        
+        # 獲取玩家金錢（假設玩家有金錢屬性）
+        player_money = getattr(self.player, 'money', 1000)  # 預設1000金錢
+        print(f"調試: 玩家金錢={player_money}")
+        
+        # 顯示商店UI
+        self.shop_manager.shop_ui.show(shop_name, items, player_money)
+        print(f"開啟{shop_name}商業界面")
+
+    def _get_shop_items(self, shop_type):
+        """
+        根據商店類型獲取商品列表\n
+        \n
+        參數:\n
+        shop_type (str): 商店類型\n
+        \n
+        回傳:\n
+        list: 商品列表\n
+        """
+        shop_items = {
+            "gun_shop": [
+                {"name": "手槍", "price": 500, "description": "可靠的近距離武器"},
+                {"name": "步槍", "price": 1200, "description": "精準的遠距離武器"},
+                {"name": "獵槍", "price": 800, "description": "適合狩獵的武器"},
+                {"name": "子彈包", "price": 50, "description": "50發子彈"},
+            ],
+            "convenience_store": [
+                {"name": "小型血量藥水", "price": 50, "description": "回復50點血量"},
+                {"name": "中型血量藥水", "price": 150, "description": "回復150點血量"},
+                {"name": "大型血量藥水", "price": 300, "description": "回復300點血量"},
+                {"name": "能量飲料", "price": 25, "description": "短暫提升移動速度"},
+            ],
+            "street_vendor": [
+                {"name": "路邊便當", "price": 30, "description": "便宜的填飽肚子選擇"},
+                {"name": "小點心", "price": 15, "description": "解饞的小零食"},
+                {"name": "涼飲", "price": 20, "description": "解渴的冰涼飲料"},
+            ],
+            "clothing_store": [
+                {"name": "日常套裝", "price": 300, "description": "舒適的日常穿著"},
+                {"name": "工作服", "price": 400, "description": "適合工作的耐用服裝"},
+                {"name": "正式套裝", "price": 800, "description": "正式場合穿著"},
+                {"name": "休閒服", "price": 250, "description": "輕鬆的休閒穿著"},
+                {"name": "運動服", "price": 350, "description": "適合運動的服裝"},
+            ]
+        }
+        
+        return shop_items.get(shop_type, [])
+
+    def _handle_purchase(self, purchase_result):
+        """
+        處理購買結果\n
+        \n
+        參數:\n
+        purchase_result (dict): 購買結果，包含item和成功狀態\n
+        """
+        if purchase_result and purchase_result.get('action') == 'buy':
+            item = purchase_result.get('item')
+            
+            # 使用玩家的 spend_money 方法
+            if self.player.spend_money(item['price']):
+                # 購買成功，更新商店UI中的金錢顯示
+                self.shop_manager.shop_ui.update_player_money(self.player.money)
+                
+                # 根據物品類型處理
+                if item['name'] in ["手槍", "步槍", "獵槍"]:
+                    # 武器類物品，添加到玩家武器庫
+                    print(f"獲得武器：{item['name']}")
+                elif "血量藥水" in item['name']:
+                    # 血量藥水，直接使用
+                    heal_amount = item.get('heal_amount', 50)
+                    if hasattr(self.player, 'health'):
+                        self.player.health = min(self.player.max_health, self.player.health + heal_amount)
+                    print(f"使用{item['name']}，回復{heal_amount}點血量")
+                else:
+                    # 其他物品
+                    print(f"購買了：{item['name']}")
+            else:
+                print("購買失敗：金錢不足")
+        else:
+            print("購買失敗：無效的購買動作")
 
     def _check_npc_interactions(self):
         """
@@ -962,8 +1249,15 @@ class TownScene(Scene):
         # 繪製水體元素
         self.terrain_system.draw_water_elements(screen, self.camera_x, self.camera_y)
 
+        # 繪製蔬果園（新增）
+        self.terrain_system.draw_vegetable_gardens(screen, self.camera_x, self.camera_y)
+
         # 繪製建築物
         self.terrain_system.draw_buildings(screen, self.camera_x, self.camera_y)
+
+        # 繪製建築標籤（只為住宅顯示「家」）
+        buildings = getattr(self.terrain_system, 'buildings', [])
+        self.building_label_system.draw_all_building_labels(screen, buildings, self.camera_x, self.camera_y)
 
         # 繪製停車場車輛
         self.terrain_system.draw_vehicles(screen, self.camera_x, self.camera_y)
@@ -981,6 +1275,38 @@ class TownScene(Scene):
         self.npc_manager.draw(
             screen, (self.camera_x, self.camera_y), self.show_npc_info
         )
+
+        # 繪製野生動物
+        if hasattr(self, 'wildlife_manager'):
+            for animal in self.wildlife_manager.animals:
+                animal.draw(screen, (self.camera_x, self.camera_y))
+
+        # 繪製子彈
+        if hasattr(self, 'shooting_system'):
+            self.shooting_system.draw_bullets(screen, (self.camera_x, self.camera_y))
+
+        # 繪製玩家角色（相對於攝影機位置）
+        player_screen_x = self.player.x - self.camera_x
+        player_screen_y = self.player.y - self.camera_y
+
+        # 只有當玩家在可見範圍內時才繪製
+        if 0 <= player_screen_x < SCREEN_WIDTH and 0 <= player_screen_y < SCREEN_HEIGHT:
+            # 暫時移動玩家矩形位置來繪製
+            original_rect = self.player.rect.copy()
+            self.player.rect.x = player_screen_x
+            self.player.rect.y = player_screen_y
+            self.player.draw(screen)
+            self.player.rect = original_rect
+
+        # 繪製狩獵目標指示器（在狩獵模式時）
+        if hasattr(self, 'hunting_system') and self.hunting_system.hunting_mode_active:
+            player_position = self.player.get_center_position()
+            animals_in_range = self.hunting_system.find_animals_in_range(
+                player_position, self.wildlife_manager
+            )
+            self.hunting_system.draw_target_indicators(
+                screen, (self.camera_x, self.camera_y), animals_in_range
+            )
 
         # 繪製玩家角色（相對於攝影機位置）
         player_screen_x = self.player.x - self.camera_x
@@ -1019,8 +1345,14 @@ class TownScene(Scene):
         # 獲取建築物資料
         buildings = getattr(self.terrain_system, 'buildings', [])
         
-        # 獲取地形資料（如果有的話）
-        terrain_data = getattr(self.terrain_system, 'terrain_data', None)
+        # 獲取地形資料（修正：使用map_data而不是terrain_data）
+        terrain_data = getattr(self.terrain_system, 'map_data', None)
+        
+        # 小地圖調試訊息
+        if terrain_data:
+            print(f"小地圖調試 - 有地形資料, 建築數量: {len(buildings)}")
+        else:
+            print("小地圖調試 - 沒有地形資料")
         
         # 繪製小地圖
         self.minimap_ui.draw(screen, player_x, player_y, facing_direction, buildings, terrain_data)
@@ -1240,6 +1572,20 @@ class TownScene(Scene):
         if self.show_npc_info:
             self.npc_info_ui.draw(screen)
 
+        # 顯示商店UI（如果開啟）
+        if self.shop_manager.shop_ui.is_visible:
+            self.shop_manager.shop_ui.draw(screen)
+
+        # 繪製狩獵UI（如果在狩獵模式）
+        if hasattr(self, 'hunting_system'):
+            font = self.font_manager.get_font(20)
+            mouse_pos = pygame.mouse.get_pos()
+            self.hunting_system.draw_hunting_ui(screen, font, mouse_pos)
+
+        # 繪製射擊UI
+        if hasattr(self, 'shooting_system'):
+            self.shooting_system.draw_shooting_ui(screen, self.player)
+
     def _apply_time_visual_effects(self, screen):
         """
         應用時間系統的視覺效果 - 天空顏色和光線遮罩\n
@@ -1287,8 +1633,57 @@ class TownScene(Scene):
         回傳:\n
         bool: True 表示事件已處理\n
         """
+        # 處理商店UI事件（優先處理）
+        if self.shop_manager.shop_ui.is_visible:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # 左鍵點擊
+                    purchase_result = self.shop_manager.shop_ui.handle_mouse_click(event.pos)
+                    if purchase_result:
+                        # 處理購買結果
+                        self._handle_purchase(purchase_result)
+                    return True
+                elif event.button == 3:  # 右鍵關閉商店
+                    self.shop_manager.shop_ui.hide()
+                    return True
+            elif event.type == pygame.MOUSEMOTION:
+                self.shop_manager.shop_ui.handle_mouse_move(event.pos)
+                return True
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:  # ESC鍵關閉商店
+                    self.shop_manager.shop_ui.hide()
+                    return True
+
         # 讓輸入控制器處理事件
         action = self.input_controller.handle_event(event)
+
+        # 處理狩獵和武器相關事件
+        if action == "hunting":
+            # G鍵切換狩獵模式
+            self.hunting_system.toggle_hunting_mode(self.player)
+            return True
+        elif action == "chop_tree":
+            # Q鍵砍伐樹木
+            return self._handle_tree_chopping()
+        elif action == "left_click":
+            # 左鍵點擊處理
+            mouse_pos = pygame.mouse.get_pos()
+            camera_offset = (self.camera_x, self.camera_y)
+            
+            # 如果在狩獵模式，嘗試狩獵
+            if self.hunting_system.hunting_mode_active:
+                hunt_result = self.hunting_system.attempt_hunt(
+                    self.player, self.shooting_system, mouse_pos, camera_offset
+                )
+                if hunt_result["success"]:
+                    self._handle_hunt_result(hunt_result)
+                return True
+            else:
+                # 檢查是否點擊了建築物（原有邏輯）
+                return self._handle_building_click(mouse_pos, camera_offset)
+        elif action == "weapon_wheel":
+            # 中鍵切換武器圓盤
+            self.player.weapon_wheel_visible = not self.player.weapon_wheel_visible
+            return True
 
         # 處理小地圖事件
         if action == "middle_click":

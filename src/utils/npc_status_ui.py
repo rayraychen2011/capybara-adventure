@@ -148,13 +148,13 @@ class NPCStatusDisplayUI:
         回傳:\n
         str: 統計資訊\n
         """
-        if not hasattr(npc_manager, 'npcs'):
+        if not hasattr(npc_manager, 'all_npcs'):
             return "無NPC資料"
         
-        total_npcs = len(npc_manager.npcs)
-        healthy_count = sum(1 for npc in npc_manager.npcs if not npc.is_injured)
+        total_npcs = len(npc_manager.all_npcs)
+        healthy_count = sum(1 for npc in npc_manager.all_npcs if not npc.is_injured)
         injured_count = total_npcs - healthy_count
-        working_count = sum(1 for npc in npc_manager.npcs if hasattr(npc, 'state') and npc.state.name == 'WORKING')
+        working_count = sum(1 for npc in npc_manager.all_npcs if hasattr(npc, 'state') and npc.state.name == 'WORKING')
         
         return f"總計: {total_npcs} | 健康: {healthy_count} | 受傷: {injured_count} | 工作中: {working_count}"
 
@@ -166,11 +166,11 @@ class NPCStatusDisplayUI:
         screen (pygame.Surface): 繪製目標\n
         npc_manager (NPCManager): NPC管理器\n
         """
-        if not hasattr(npc_manager, 'npcs'):
+        if not hasattr(npc_manager, 'all_npcs'):
             return
         
         # 計算可顯示的NPC數量和滾動範圍
-        total_npcs = len(npc_manager.npcs)
+        total_npcs = len(npc_manager.all_npcs)
         self.max_scroll = max(0, total_npcs - self.items_per_page)
         
         # 起始Y位置
@@ -182,7 +182,7 @@ class NPCStatusDisplayUI:
         end_index = min(start_index + self.items_per_page, total_npcs)
         
         for i in range(start_index, end_index):
-            npc = npc_manager.npcs[i]
+            npc = npc_manager.all_npcs[i]
             y_pos = start_y + (i - start_index) * self.line_height
             
             # 準備NPC資訊

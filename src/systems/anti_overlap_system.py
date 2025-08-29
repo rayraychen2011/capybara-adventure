@@ -91,7 +91,7 @@ class AntiOverlapTeleportSystem:
         
         teleported_count = 0
         
-        for npc in npc_manager.npcs:
+        for npc in npc_manager.all_npcs:
             npc_pos = (npc.x + 4, npc.y + 4)  # NPC中心位置（假設NPC大小為8x8）
             
             # 檢查NPC是否在不安全位置

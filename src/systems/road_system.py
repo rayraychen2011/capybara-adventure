@@ -645,9 +645,9 @@ class RoadManager:
         # 創建路口
         self._create_intersections(town_bounds)
 
-        print(
-            f"道路網絡創建完成: {len(self.road_segments)} 段道路, {len(self.intersections)} 個路口"
-        )
+        # print(
+        #     f"道路網絡創建完成: {len(self.road_segments)} 段道路, {len(self.intersections)} 個路口"
+        # )  # 暫時關閉
 
     def _create_main_grid(self, town_bounds):
         """

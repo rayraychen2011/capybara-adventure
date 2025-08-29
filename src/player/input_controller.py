@@ -45,31 +45,28 @@ class InputController:
         # 功能按鍵映射
         self.action_keys = {
             pygame.K_SPACE: "interact",  # 互動
-            pygame.K_e: "equipment_wheel",  # 裝備圓盤（修改）
+            pygame.K_e: "interact",      # 互動（備用）
             pygame.K_q: "chop_tree",     # 砍伐樹木（新增）
             pygame.K_c: "talk",          # 對話（新增）
-            pygame.K_i: "inventory",  # 背包
-            pygame.K_TAB: "inventory",  # 背包（備用）
-            pygame.K_m: "map",  # 地圖
+            pygame.K_m: "map",           # 地圖
             pygame.K_RETURN: "confirm",  # 確認
             pygame.K_BACKSPACE: "cancel",  # 取消
-            pygame.K_f: "fishing",  # 釣魚
-            pygame.K_g: "hunting",  # 狩獵
-            pygame.K_v: "vehicle",  # 載具
-            pygame.K_LSHIFT: "run",  # 跑步（預留）
-            # 裝備選擇快捷鍵（新增）
-            pygame.K_1: "equip_1",  # 槍
-            pygame.K_2: "equip_2",  # 釣竿
-            pygame.K_3: "equip_3",  # 小刀
-            pygame.K_4: "equip_4",  # 車鑰匙
-            pygame.K_5: "equip_5",  # 手電筒
+            pygame.K_f: "fishing",       # 釣魚
+            pygame.K_g: "hunting",       # 狩獵
+            pygame.K_v: "vehicle",       # 載具
+            pygame.K_LSHIFT: "run",      # 跑步（預留）
+            pygame.K_r: "reload",        # 重新裝彈
+            # 武器選擇快捷鍵（修改為武器圓盤）
+            pygame.K_1: "weapon_1",      # 槍
+            pygame.K_2: "weapon_2",      # 斧頭
+            pygame.K_3: "weapon_3",      # 空手
         }
 
         # 滑鼠按鍵映射
         self.mouse_action_keys = {
-            1: "left_click",    # 左鍵點擊
-            2: "middle_click",  # 中鍵點擊 - 開啟小地圖
-            3: "right_click",   # 右鍵點擊
+            1: "left_click",      # 左鍵點擊 - 射擊
+            2: "weapon_wheel",    # 中鍵點擊 - 開啟武器圓盤
+            3: "right_click",     # 右鍵點擊
         }
 
         # 當前移動向量

@@ -3,7 +3,7 @@ import pygame
 import random
 import time
 from src.systems.wildlife.animal import Animal, AnimalState
-from src.systems.wildlife.animal_data import AnimalType, AnimalData
+from src.systems.wildlife.animal_data import AnimalType, AnimalData, RarityLevel
 from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
 
@@ -21,8 +21,29 @@ class WildlifeManager:
     3. 玩家與動物互動\n
     4. 狩獵和釣魚機制\n
     5. 保育系統執行\n
-    6. 季節性動物遷移\n
     """
+
+    def _handle_animal_attack_player(self, animal, player_position):
+        """
+        處理動物攻擊玩家事件\n
+        \n
+        參數:\n
+        animal (Animal): 攻擊的動物\n
+        player_position (tuple): 玩家位置\n
+        """
+        # 這個方法需要由外部場景系統調用，因為野生動物管理器沒有直接的玩家引用
+        # 設置一個回調機制供外部系統處理
+        if hasattr(self, 'player_attack_callback') and self.player_attack_callback:
+            self.player_attack_callback(animal.attack_damage, animal)
+
+    def set_player_attack_callback(self, callback):
+        """
+        設置玩家被攻擊時的回調函數\n
+        \n
+        參數:\n
+        callback (function): 回調函數，接收 (damage, source) 參數\n
+        """
+        self.player_attack_callback = callback
 
     def __init__(self):
         """
@@ -32,6 +53,8 @@ class WildlifeManager:
         self.forest_animals = []  # 森林動物 (地形代碼1)
         self.lake_animals = []  # 湖泊動物 (地形代碼2)
         self.all_animals = []  # 所有動物的統一列表
+
+        print("野生動物管理器初始化完成")
 
         # 生成控制
         self.max_forest_animals = 15  # 森林最大動物數量
@@ -51,15 +74,38 @@ class WildlifeManager:
         self.hunting_range = 40  # 狩獵攻擊範圍
         self.fishing_range = 60  # 釣魚範圍
 
-        # 保育系統
-        self.protected_kills = []  # 保育類動物擊殺記錄
+        # 保育系統已移除
 
         # 統計資料
         self.total_spawned = 0  # 總生成數量
         self.total_hunted = 0  # 總狩獵數量
         self.total_fished = 0  # 總釣魚數量
 
-        print("野生動物管理器初始化完成")
+    @property
+    def animals(self):
+        """
+        獲取所有動物的統一列表\n
+        \n
+        回傳:\n
+        list: 所有動物的列表\n
+        """
+        # 實時合併所有動物列表
+        all_animals = []
+        all_animals.extend(self.forest_animals)
+        all_animals.extend(self.lake_animals)
+        all_animals.extend(self.all_animals)
+        
+        # 去重（使用ID確保唯一性）
+        unique_animals = []
+        seen_ids = set()
+        for animal in all_animals:
+            if hasattr(animal, 'id') and animal.id not in seen_ids:
+                unique_animals.append(animal)
+                seen_ids.add(animal.id)
+            elif not hasattr(animal, 'id'):
+                unique_animals.append(animal)
+        
+        return unique_animals
 
     def set_habitat_bounds(self, forest_bounds, lake_bounds):
         """
@@ -139,15 +185,13 @@ class WildlifeManager:
         if scene_type in ["forest", "all"]:
             # 檢查森林邊界有效性
             if self.forest_bounds[2] > 60 and self.forest_bounds[3] > 60:
-                # 生成森林動物
+                # 生成森林動物 - 新的動物系統
                 forest_species = [
-                    AnimalType.RABBIT,
-                    AnimalType.DEER,
-                    AnimalType.WILD_BOAR,
-                    AnimalType.PHEASANT,
-                    AnimalType.SQUIRREL,
-                    AnimalType.FOX,
-                    AnimalType.BEAR,
+                    AnimalType.RABBIT,      # 稀有
+                    AnimalType.SHEEP,       # 稀有
+                    AnimalType.MOUNTAIN_LION, # 超稀有
+                    AnimalType.BLACK_PANTHER, # 超稀有
+                    AnimalType.BEAR,        # 傳奇
                 ]
 
                 for _ in range(8):  # 初始生成8隻森林動物
@@ -157,16 +201,12 @@ class WildlifeManager:
         if scene_type in ["lake", "all"]:
             # 檢查湖泊邊界有效性
             if self.lake_bounds[2] > 60 and self.lake_bounds[3] > 60:
-                # 生成湖泊動物 (魚類)
+                # 生成湖泊動物 - 主要是烏龜
                 lake_species = [
-                    AnimalType.BASS,
-                    AnimalType.CARP,
-                    AnimalType.TROUT,
-                    AnimalType.CATFISH,
-                    AnimalType.SALMON,
+                    AnimalType.TURTLE,      # 稀有
                 ]
 
-                for _ in range(6):  # 初始生成6條魚
+                for _ in range(4):  # 初始生成4隻湖泊動物
                     animal_type = random.choice(lake_species)
                     self._spawn_animal(animal_type, "lake")
 
@@ -266,6 +306,11 @@ class WildlifeManager:
         for animal in active_animals[:]:  # 使用切片複製，防止修改列表時出錯
             if animal.is_alive:
                 animal.update(dt, player_position)
+                
+                # 檢查動物是否攻擊了玩家
+                if hasattr(animal, 'has_attacked_player') and animal.has_attacked_player:
+                    self._handle_animal_attack_player(animal, player_position)
+                    animal.has_attacked_player = False  # 重置攻擊標記
             else:
                 # 移除死亡動物 (延遲一段時間)
                 if time.time() - animal.death_time > 10:  # 死亡10秒後移除
@@ -294,13 +339,11 @@ class WildlifeManager:
         ):
             # 選擇森林動物種類 (根據稀有度加權)
             spawn_weights = {
-                AnimalType.RABBIT: 30,  # 很常見
-                AnimalType.SQUIRREL: 25,  # 很常見
-                AnimalType.PHEASANT: 20,  # 常見
-                AnimalType.DEER: 15,  # 普通
-                AnimalType.FOX: 10,  # 較少見
-                AnimalType.WILD_BOAR: 8,  # 少見
-                AnimalType.BEAR: 2,  # 稀有
+                AnimalType.RABBIT: 30,        # 稀有，很常見
+                AnimalType.SHEEP: 25,         # 稀有，很常見
+                AnimalType.MOUNTAIN_LION: 8,  # 超稀有，少見
+                AnimalType.BLACK_PANTHER: 6,  # 超稀有，少見
+                AnimalType.BEAR: 2,           # 傳奇，稀有
             }
 
             animal_type = self._weighted_random_choice(spawn_weights)
@@ -315,11 +358,7 @@ class WildlifeManager:
         ):
             # 選擇湖泊動物種類
             spawn_weights = {
-                AnimalType.CARP: 25,  # 很常見
-                AnimalType.BASS: 20,  # 常見
-                AnimalType.CATFISH: 18,  # 常見
-                AnimalType.TROUT: 15,  # 普通
-                AnimalType.SALMON: 12,  # 較少見
+                AnimalType.TURTLE: 25,  # 稀有，很常見
             }
 
             animal_type = self._weighted_random_choice(spawn_weights)
@@ -461,25 +500,28 @@ class WildlifeManager:
             # 獲取戰利品
             loot = target_animal.drop_items.copy()
 
-            # 檢查保育類動物
-            penalty = None
-            if target_animal.is_protected:
-                self._trigger_protected_kill(target_animal, player)
-                penalty = (
-                    f"警告：您獵殺了保育類動物 {target_animal.animal_type.value}！"
-                )
+            # 根據動物稀有度獲得獎勵金額
+            rarity = AnimalData.get_animal_property(target_animal.animal_type, "rarity")
+            reward_money = AnimalData.get_animal_rarity_value(rarity)
+            
+            # 給玩家金錢獎勵
+            if hasattr(player, 'money'):
+                player.money += reward_money
+                print(f"獵殺 {target_animal.animal_type.value} 獲得 {reward_money} 元")
 
             return {
                 "success": True,
                 "animal": target_animal,
                 "loot": loot,
-                "penalty": penalty,
+                "reward_money": reward_money,
+                "penalty": None,
             }
         else:
             return {
                 "success": True,
                 "animal": target_animal,
                 "loot": [],
+                "reward_money": 0,
                 "penalty": None,
             }
 
@@ -499,77 +541,8 @@ class WildlifeManager:
             'penalty': str - 懲罰訊息 (如果有)\n
         }\n
         """
-        # 檢查玩家是否在釣魚範圍內
-        # (這裡需要檢查玩家是否靠近水邊)
-
-        # 尋找釣魚範圍內的魚
-        nearby_fish = self.get_nearby_animals(
-            player_position, self.fishing_range, "lake"
-        )
-
-        # 釣魚成功率計算
-        base_success_rate = 0.3  # 基礎30%成功率
-        if nearby_fish:
-            # 附近有魚時提高成功率
-            base_success_rate += len(nearby_fish) * 0.1
-
-        if random.random() > base_success_rate:
-            return {"success": False, "fish": None, "loot": [], "penalty": None}
-
-        # 釣魚成功，隨機選擇一條魚
-        if nearby_fish:
-            target_fish = random.choice(nearby_fish)
-        else:
-            # 沒有附近的魚，生成一條新魚
-            lake_species = [
-                AnimalType.BASS,
-                AnimalType.CARP,
-                AnimalType.TROUT,
-                AnimalType.CATFISH,
-                AnimalType.SALMON,
-            ]
-            fish_type = random.choice(lake_species)
-            target_fish = self._spawn_animal(fish_type, "lake")
-
-        if target_fish:
-            # 魚被釣上來 (直接死亡)
-            target_fish._die(player)
-            self.total_fished += 1
-
-            # 獲取戰利品
-            loot = target_fish.drop_items.copy()
-
-            # 檢查保育類魚類
-            penalty = None
-            if target_fish.is_protected:
-                self._trigger_protected_kill(target_fish, player)
-                penalty = f"警告：您釣到了保育類魚類 {target_fish.animal_type.value}！"
-
-            return {
-                "success": True,
-                "fish": target_fish,
-                "loot": loot,
-                "penalty": penalty,
-            }
-
+        # 釣魚系統已簡化，專注於陸地動物狩獵
         return {"success": False, "fish": None, "loot": [], "penalty": None}
-
-    def _trigger_protected_kill(self, animal, killer):
-        """
-        觸發保育類動物擊殺事件\n
-        \n
-        參數:\n
-        animal (Animal): 被殺的保育類動物\n
-        killer (Player): 殺手\n
-        """
-        # 記錄擊殺事件
-        kill_record = {
-            "animal": animal,
-            "killer": killer,
-            "time": time.time(),
-            "location": animal.get_position(),
-        }
-        self.protected_kills.append(kill_record)
 
     def get_statistics(self):
         """
@@ -584,7 +557,6 @@ class WildlifeManager:
             "total_fished": self.total_fished,
             "forest_animals": len(self.forest_animals),
             "lake_animals": len(self.lake_animals),
-            "protected_kills": len(self.protected_kills),
         }
 
     def draw_all_animals(self, screen, scene_name, camera_offset=(0, 0)):
@@ -650,10 +622,36 @@ class WildlifeManager:
         # 顯示動物詳細資訊
         for i, animal in enumerate(animals[:5]):  # 只顯示前5隻動物的資訊
             if animal.is_alive:
-                info_text = f"{animal.animal_type.value}: {animal.state.value}"
-                if animal.is_protected:
-                    info_text += " [保育類]"
+                rarity = AnimalData.get_animal_property(animal.animal_type, "rarity")
+                rarity_text = rarity.value if rarity else "未知"
+                info_text = f"{animal.animal_type.value}: {animal.state.value} [{rarity_text}]"
 
                 text_surface = font.render(info_text, True, (200, 200, 200))
                 screen.blit(text_surface, (10, y_offset))
                 y_offset += 20
+
+    def is_player_in_legendary_territory(self, player_position):
+        """
+        檢查玩家是否在傳奇動物的領地範圍內\n
+        \n
+        參數:\n
+        player_position (tuple): 玩家位置 (x, y)\n
+        \n
+        回傳:\n
+        bool: 是否在傳奇動物領地\n
+        """
+        for animal in self.all_animals:
+            # 檢查是否為傳奇動物且有領地
+            if (hasattr(animal, 'rarity') and 
+                animal.rarity == RarityLevel.LEGENDARY and
+                hasattr(animal, 'territory_radius')):
+                
+                # 計算玩家與動物的距離
+                distance = ((player_position[0] - animal.x) ** 2 + 
+                           (player_position[1] - animal.y) ** 2) ** 0.5
+                
+                # 如果在領地範圍內
+                if distance <= animal.territory_radius:
+                    return True
+        
+        return False

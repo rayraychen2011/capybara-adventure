@@ -71,6 +71,8 @@ class NPC:
         self.in_vehicle = False  # 是否正在使用載具
         self.commute_distance_threshold = NPC_COMMUTE_DISTANCE_THRESHOLD  # 使用載具的距離閾值
         self.vehicle_type = "car" if self.has_vehicle else None  # 載具類型
+        self.can_use_train = True  # 可以使用火車通勤
+        self.terrain_system = None  # 地形系統引用，用於火車站查找
 
         # 工作和住所
         self.workplace = None
@@ -396,11 +398,11 @@ class NPC:
 
         # 休息日邏輯 (星期一到五)
         if not self.is_workday:
-            # 休息日時 NPC 到處亂晃，不工作
+            # 休息日時 NPC 只在住宅區附近活動
             if self.state not in [NPCState.IDLE, NPCState.MOVING]:
                 self.state = NPCState.IDLE
-                # 設定一個隨機的閒逛目標
-                self._set_random_wander_target()
+                # 設定一個在住宅區附近的閒逛目標
+                self._set_residential_wander_target()
             return
 
         # 工作日邏輯 (星期六、日)
@@ -627,7 +629,8 @@ class NPC:
 
     def _check_collision_with_environment(self):
         """
-        檢查 NPC 是否與環境物件（建築物、水域）發生碰撞\n
+        檢查 NPC 是否與環境物件（建築物、水域、鐵軌）發生碰撞\n
+        根據新需求：NPC 只能從斑馬線處通過鐵軌，且永遠不會到湖泊地形\n
         \n
         回傳:\n
         bool: True 表示發生碰撞，False 表示沒有碰撞\n
@@ -637,10 +640,20 @@ class NPC:
             self.x - self.size, self.y - self.size, self.size * 2, self.size * 2
         )
 
-        # 檢查水域碰撞（NPC 不能進入水體）
+        # 檢查地形類型，避開湖泊（地形代碼2）
         if hasattr(self, "terrain_system") and self.terrain_system:
+            terrain_type = self.terrain_system.get_terrain_at_position(self.x, self.y)
+            if terrain_type == 2:  # 湖泊地形
+                return True  # 避開湖泊
+                
+            # 檢查水域碰撞（NPC 不能進入水體）
             if self.terrain_system.check_water_collision(self.x, self.y):
                 return True
+            
+            # 檢查鐵軌碰撞（新增）- NPC 只能從有斑馬線的地方通過
+            if hasattr(self.terrain_system, 'railway_system'):
+                if self.terrain_system.railway_system.check_railway_collision_for_npc(npc_rect):
+                    return True
 
         # 檢查建築物碰撞
         if hasattr(self, "buildings") and self.buildings:
@@ -753,12 +766,111 @@ class NPC:
 
     def go_to_work(self):
         """
-        前往工作場所\n
+        前往工作場所 - 根據距離決定交通方式\n
         """
-        if self.workplace:
-            work_x, work_y = self.workplace
-            self.move_to_location(work_x, work_y)
-            print(f"NPC {self.name} 前往工作場所")
+        if not self.workplace:
+            return
+        
+        work_x, work_y = self.workplace
+        
+        # 計算到工作場所的距離
+        distance = math.sqrt((work_x - self.x)**2 + (work_y - self.y)**2)
+        
+        # 如果距離很遠，考慮使用火車
+        if distance > self.commute_distance_threshold * 2 and self.can_use_train:
+            if self._try_train_commute(work_x, work_y):
+                print(f"NPC {self.name} 搭乘火車前往工作場所")
+                return
+        
+        # 否則使用正常移動
+        self.move_to_location(work_x, work_y)
+        print(f"NPC {self.name} 前往工作場所")
+
+    def _try_train_commute(self, dest_x, dest_y):
+        """
+        嘗試使用火車通勤\n
+        \n
+        參數:\n
+        dest_x (float): 目的地 X 座標\n
+        dest_y (float): 目的地 Y 座標\n
+        \n
+        回傳:\n
+        bool: 是否成功使用火車通勤\n
+        """
+        if not self.terrain_system or not hasattr(self.terrain_system, 'railway_system'):
+            return False
+        
+        railway_system = self.terrain_system.railway_system
+        
+        # 找最近的火車站
+        nearest_station = self._find_nearest_train_station()
+        if not nearest_station:
+            return False
+        
+        # 找目的地附近的火車站
+        dest_station = self._find_nearest_station_to_destination(dest_x, dest_y)
+        if not dest_station or dest_station == nearest_station:
+            return False
+        
+        # 移動到目的地火車站附近
+        self.x = dest_station.x + dest_station.width // 2
+        self.y = dest_station.y + dest_station.height + 10
+        
+        return True
+
+    def _find_nearest_train_station(self):
+        """
+        找到最近的火車站\n
+        \n
+        回傳:\n
+        TrainStation: 最近的火車站，如果沒有則返回 None\n
+        """
+        if not self.terrain_system or not hasattr(self.terrain_system, 'railway_system'):
+            return None
+        
+        stations = self.terrain_system.railway_system.train_stations
+        if not stations:
+            return None
+        
+        nearest_station = None
+        nearest_distance = float('inf')
+        
+        for station in stations:
+            distance = math.sqrt((self.x - station.x)**2 + (self.y - station.y)**2)
+            if distance < nearest_distance:
+                nearest_distance = distance
+                nearest_station = station
+        
+        return nearest_station
+
+    def _find_nearest_station_to_destination(self, dest_x, dest_y):
+        """
+        找到目的地附近最近的火車站\n
+        \n
+        參數:\n
+        dest_x (float): 目的地 X 座標\n
+        dest_y (float): 目的地 Y 座標\n
+        \n
+        回傳:\n
+        TrainStation: 最近的火車站，如果沒有則返回 None\n
+        """
+        if not self.terrain_system or not hasattr(self.terrain_system, 'railway_system'):
+            return None
+        
+        stations = self.terrain_system.railway_system.train_stations
+        if not stations:
+            return None
+        
+        nearest_station = None
+        nearest_distance = float('inf')
+        
+        for station in stations:
+            distance = math.sqrt((dest_x - station.x)**2 + (dest_y - station.y)**2)
+            if distance < nearest_distance:
+                nearest_distance = distance
+                nearest_station = station
+        
+        return nearest_station
 
     def go_home(self):
         """
@@ -1070,6 +1182,15 @@ class NPC:
         """
         self.workplace = workplace_position
 
+    def set_terrain_system(self, terrain_system):
+        """
+        設定地形系統引用\n
+        \n
+        參數:\n
+        terrain_system: 地形系統實例\n
+        """
+        self.terrain_system = terrain_system
+
     def set_home(self, home_position):
         """
         設定住所位置\n
@@ -1246,6 +1367,12 @@ class NPC:
                 screen, (200, 200, 200), (screen_x, screen_y), self.size - 2
             )
 
+        # 顯示 NPC 職業（無業遊民）文字標籤
+        font = pygame.font.SysFont('Microsoft JhengHei', 14)
+        label = f"{self.name} ({self.profession.value})"
+        text_surface = font.render(label, True, (30, 30, 30))
+        screen.blit(text_surface, (screen_x - self.size, screen_y + self.size + 2))
+
     def _should_hide_npc(self):
         """
         判斷 NPC 是否應該隱藏（不在戶外顯示）\n
@@ -1283,6 +1410,57 @@ class NPC:
             return True
 
         return False
+
+    def _set_residential_wander_target(self):
+        """
+        設定住宅區附近的閒逛目標\n
+        在假日時，NPC 只在住宅區附近活動\n
+        """
+        if not self.terrain_system:
+            # 如果沒有地形系統，就在家附近閒逛
+            home_x, home_y = self.home_position
+            angle = random.uniform(0, 2 * math.pi)
+            distance = random.uniform(50, 150)  # 在家附近150像素範圍內
+            
+            self.target_x = home_x + distance * math.cos(angle)
+            self.target_y = home_y + distance * math.sin(angle)
+            return
+        
+        # 找住宅區 (地形代碼 5)
+        attempts = 0
+        max_attempts = 20
+        
+        while attempts < max_attempts:
+            # 在住宅區範圍內隨機選擇位置
+            home_x, home_y = self.home_position
+            
+            # 在家附近較大範圍內尋找住宅區
+            search_radius = 200
+            angle = random.uniform(0, 2 * math.pi)
+            distance = random.uniform(30, search_radius)
+            
+            test_x = home_x + distance * math.cos(angle)
+            test_y = home_y + distance * math.sin(angle)
+            
+            terrain_type = self.terrain_system.get_terrain_at_position(test_x, test_y)
+            
+            # 檢查是否在住宅區或草地（允許在住宅區和草地活動）
+            if terrain_type in [0, 5]:  # 0=草地, 5=住宅區
+                self.target_x = test_x
+                self.target_y = test_y
+                self.state = NPCState.MOVING
+                return
+            
+            attempts += 1
+        
+        # 如果找不到合適的住宅區位置，就在家附近
+        home_x, home_y = self.home_position
+        angle = random.uniform(0, 2 * math.pi)
+        distance = random.uniform(30, 100)
+        
+        self.target_x = home_x + distance * math.cos(angle)
+        self.target_y = home_y + distance * math.sin(angle)
+        self.state = NPCState.MOVING
 
     def draw_info(self, screen, font, camera_x=0, camera_y=0):
         """

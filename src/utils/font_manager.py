@@ -28,6 +28,12 @@ class FontManager:
         """
         初始化字體管理器\n
         """
+        # 確保pygame.font已初始化
+        if not pygame.get_init():
+            pygame.init()
+        if not pygame.font.get_init():
+            pygame.font.init()
+            
         # 字體快取字典，避免重複載入相同字體
         self.font_cache = {}
         

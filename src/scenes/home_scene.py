@@ -6,6 +6,7 @@ from src.core.scene_manager import Scene
 from src.core.state_manager import GameState
 from src.player.player import Player
 from src.player.input_controller import InputController
+from src.utils.font_manager import get_font_manager
 from config.settings import *
 
 
@@ -28,6 +29,9 @@ class HomeScene(Scene):
         """
         super().__init__("家")
         self.state_manager = state_manager
+
+        # 初始化字體管理器
+        self.font_manager = get_font_manager()
 
         # 建立玩家角色
         self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
@@ -505,15 +509,13 @@ class HomeScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        font = pygame.font.Font(None, 20)
-
         for furniture in self.furniture:
             # 繪製家具主體
             pygame.draw.rect(screen, furniture["color"], furniture["area"])
             pygame.draw.rect(screen, (0, 0, 0), furniture["area"], 2)
 
-            # 繪製家具名稱
-            text = font.render(furniture["name"], True, (255, 255, 255))
+            # 繪製家具名稱（使用字體管理器支援繁體中文）
+            text = self.font_manager.render_text(furniture["name"], 20, (255, 255, 255))
             text_rect = text.get_rect(center=furniture["area"].center)
             screen.blit(text, text_rect)
 
@@ -528,15 +530,13 @@ class HomeScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        font = pygame.font.Font(None, 18)
-
         for area in self.interaction_areas:
             # 繪製區域背景
             pygame.draw.rect(screen, area["color"], area["area"])
             pygame.draw.rect(screen, (0, 0, 0), area["area"], 2)
 
-            # 繪製區域名稱
-            text = font.render(area["name"], True, (0, 0, 0))
+            # 繪製區域名稱（使用字體管理器支援繁體中文）
+            text = self.font_manager.render_text(area["name"], 18, (0, 0, 0))
             text_rect = text.get_rect(center=area["area"].center)
             screen.blit(text, text_rect)
 
@@ -547,11 +547,18 @@ class HomeScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
+    def _draw_exit_area(self, screen):
+        """
+        繪製出口區域\n
+        \n
+        參數:\n
+        screen (pygame.Surface): 繪製目標表面\n
+        """
         pygame.draw.rect(screen, (255, 255, 0), self.exit_area)
         pygame.draw.rect(screen, (0, 0, 0), self.exit_area, 2)
 
-        font = pygame.font.Font(None, 20)
-        text = font.render("出門", True, (0, 0, 0))
+        # 使用字體管理器支援繁體中文
+        text = self.font_manager.render_text("出門", 20, (0, 0, 0))
         text_rect = text.get_rect(center=self.exit_area.center)
         screen.blit(text, text_rect)
 
@@ -562,15 +569,13 @@ class HomeScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        font = pygame.font.Font(None, 24)
-
-        # 顯示金錢
-        money_text = font.render(f"金錢: ${self.player.get_money()}", True, (0, 0, 0))
+        # 顯示金錢（使用字體管理器支援繁體中文）
+        money_text = self.font_manager.render_text(f"金錢: ${self.player.get_money()}", 24, (0, 0, 0))
         screen.blit(money_text, (10, 10))
 
         # 顯示座標（在家裡應該顯示 (0, 0)）
         relative_x, relative_y = self.player.get_relative_position()
-        coord_text = font.render(f"座標: ({relative_x}, {relative_y})", True, (0, 0, 0))
+        coord_text = self.font_manager.render_text(f"座標: ({relative_x}, {relative_y})", 24, (0, 0, 0))
         screen.blit(coord_text, (10, 35))
 
         # 繪製物品欄（畫面底下）

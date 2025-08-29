@@ -30,6 +30,9 @@ class ForestScene(Scene):
         super().__init__("森林")
         self.state_manager = state_manager
 
+        # 初始化字體管理器
+        self.font_manager = get_font_manager()
+
         # 建立玩家角色 - 初始位置會在 enter() 時設定
         self.player = Player(100, SCREEN_HEIGHT // 2)
 
@@ -432,8 +435,8 @@ class ForestScene(Scene):
         pygame.draw.rect(screen, (255, 255, 0), self.town_exit_area)
         pygame.draw.rect(screen, (0, 0, 0), self.town_exit_area, 2)
 
-        font = pygame.font.Font(None, 20)
-        town_text = font.render("回小鎮", True, (0, 0, 0))
+        # 使用字體管理器支援繁體中文
+        town_text = self.font_manager.render_text("回小鎮", 20, (0, 0, 0))
         town_text_rect = town_text.get_rect(center=self.town_exit_area.center)
         screen.blit(town_text, town_text_rect)
 
@@ -441,7 +444,7 @@ class ForestScene(Scene):
         pygame.draw.rect(screen, (0, 191, 255), self.lake_exit_area)
         pygame.draw.rect(screen, (0, 0, 0), self.lake_exit_area, 2)
 
-        lake_text = font.render("往湖泊", True, (0, 0, 0))
+        lake_text = self.font_manager.render_text("往湖泊", 20, (0, 0, 0))
         lake_text_rect = lake_text.get_rect(center=self.lake_exit_area.center)
         screen.blit(lake_text, lake_text_rect)
 
@@ -476,11 +479,9 @@ class ForestScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        font = pygame.font.Font(None, 24)
-
-        # 顯示金錢
-        money_text = font.render(
-            f"金錢: ${self.player.get_money()}", True, (255, 255, 255)
+        # 顯示金錢（使用字體管理器支援繁體中文）
+        money_text = self.font_manager.render_text(
+            f"金錢: ${self.player.get_money()}", 24, (255, 255, 255)
         )
         screen.blit(money_text, (10, 10))
 

@@ -20,13 +20,13 @@ class TerrainMapEditor:
     5. 自動載入最後編輯的版本\n
     """
     
-    def __init__(self, window_width: int = 1200, window_height: int = 900):
+    def __init__(self, window_width: int = 1400, window_height: int = 1000):
         """
         初始化地圖編輯器\n
         \n
         參數:\n
-        window_width (int): 視窗寬度，預設1200像素\n
-        window_height (int): 視窗高度，預設900像素\n
+        window_width (int): 視窗寬度，預設1400像素\n
+        window_height (int): 視窗高度，預設1000像素\n
         """
         pygame.init()
         
@@ -53,8 +53,8 @@ class TerrainMapEditor:
         self.map_offset_x = 50  # 地圖顯示偏移
         self.map_offset_y = 50
         
-        # 工具面板設定
-        self.panel_width = 200
+        # 工具面板設定 - 增加面板寬度以容納更多資訊
+        self.panel_width = 250
         self.panel_x = window_width - self.panel_width
         
         # 編輯器狀態
@@ -93,18 +93,32 @@ class TerrainMapEditor:
         if self.map_loader.map_width == 0 or self.map_loader.map_height == 0:
             return
             
-        # 計算可用的顯示區域（扣除工具面板）
+        # 調整地圖偏移量，讓地圖更靠近邊緣
+        self.map_offset_x = 10
+        self.map_offset_y = 10
+        
+        # 計算可用的顯示區域（扣除工具面板和填滿按鈕預留空間）
         available_width = self.window_width - self.panel_width - self.map_offset_x * 2
-        available_height = self.window_height - self.map_offset_y * 2
+        available_height = self.window_height - self.map_offset_y * 2 - 60  # 為底部按鈕預留空間
         
         # 計算適合的瓦片大小
         scale_x = available_width // self.map_loader.map_width
         scale_y = available_height // self.map_loader.map_height
         
-        # 選擇較小的比例以確保地圖完整顯示
-        self.tile_size = max(1, min(scale_x, scale_y, 25))
+        # 選擇較小的比例以確保地圖完整顯示，設定最小值為2像素
+        self.tile_size = max(2, min(scale_x, scale_y, 20))
+        
+        # 重新計算實際地圖顯示尺寸，確保居中顯示
+        actual_map_width = self.map_loader.map_width * self.tile_size
+        actual_map_height = self.map_loader.map_height * self.tile_size
+        
+        # 在可用空間內居中顯示地圖
+        self.map_offset_x = (available_width - actual_map_width) // 2 + 10
+        self.map_offset_y = (available_height - actual_map_height) // 2 + 10
         
         print(f"顯示比例調整為：{self.tile_size}x{self.tile_size} 像素/格")
+        print(f"地圖位置：({self.map_offset_x}, {self.map_offset_y})")
+        print(f"地圖尺寸：{actual_map_width}x{actual_map_height} 像素")
     
     def handle_events(self):
         """
@@ -112,24 +126,63 @@ class TerrainMapEditor:
         包含滑鼠點擊、鍵盤按鍵等\n
         """
         for event in pygame.event.get():
+            # 離開編輯器
             if event.type == pygame.QUIT:
                 self.running = False
-                
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # 左鍵點擊
+            # 滑鼠左鍵點擊（繪製地形/填滿）
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
                     self.is_painting = True
                     self._handle_map_click(event.pos)
-                    
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:  # 左鍵放開
+                    # 檢查是否點擊到填滿按鈕
+                    if hasattr(event, 'pos') and self._is_fill_button_clicked(event.pos):
+                        self.fill_map_with_selected_terrain()
+                        print(f"地圖已全部填滿為：{self.map_loader.get_terrain_name(self.selected_terrain)}")
+                        self.has_unsaved_changes = True
+                        self.current_file_info = "編輯版本 (有未儲存變更)"
+            # 滑鼠左鍵放開（停止繪製）
+            if event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
                     self.is_painting = False
-                    
-            elif event.type == pygame.MOUSEMOTION:
+            # 滑鼠拖曳（持續繪製地形）
+            if event.type == pygame.MOUSEMOTION:
                 if self.is_painting:
                     self._handle_map_click(event.pos)
-                    
-            elif event.type == pygame.KEYDOWN:
+            # 鍵盤事件（地形選擇/儲存/離開）
+            if event.type == pygame.KEYDOWN:
                 self._handle_keyboard(event.key)
+
+    def _is_fill_button_clicked(self, mouse_pos: tuple) -> bool:
+        """
+        判斷滑鼠是否點擊到填滿地圖按鈕\n
+        參數:\n
+        mouse_pos (tuple): 滑鼠座標 (x, y)\n
+        回傳:\n
+        bool: 是否點擊到填滿按鈕\n
+        """
+        # 檢查參數型別，避免 NameError
+        if not isinstance(mouse_pos, tuple) or len(mouse_pos) != 2:
+            return False
+        # 填滿按鈕位置與大小（位於工具面板頂部）
+        button_width = self.panel_width - 20
+        button_height = 40
+        button_x = self.panel_x + 10
+        button_y = 70  # 標題下方位置（20 + 50）
+        mx, my = mouse_pos
+        if button_x <= mx <= button_x + button_width and button_y <= my <= button_y + button_height:
+            return True
+        return False
+
+    def fill_map_with_selected_terrain(self):
+        """
+        將整張地圖填滿為目前選取的地形編碼\n
+        """
+        if not self.map_loader.map_data:
+            return
+        # 逐格填滿地圖
+        for y in range(self.map_loader.map_height):
+            for x in range(self.map_loader.map_width):
+                self.map_loader.set_terrain_at(x, y, self.selected_terrain)
     
     def _handle_map_click(self, mouse_pos: tuple):
         """
@@ -172,6 +225,18 @@ class TerrainMapEditor:
             if terrain_code in self.map_loader.terrain_types:
                 self.selected_terrain = terrain_code
                 print(f"選擇地形：{self.map_loader.get_terrain_name(terrain_code)}")
+        
+        # 字母鍵R選擇鐵軌 (R for Rail)
+        elif key == pygame.K_r:
+            if 10 in self.map_loader.terrain_types:
+                self.selected_terrain = 10
+                print(f"選擇地形：{self.map_loader.get_terrain_name(10)}")
+        
+        # 字母鍵T選擇火車站 (T for Train station)
+        elif key == pygame.K_t:
+            if 11 in self.map_loader.terrain_types:
+                self.selected_terrain = 11
+                print(f"選擇地形：{self.map_loader.get_terrain_name(11)}")
                 
         # S鍵儲存地圖
         elif key == pygame.K_s:
@@ -252,7 +317,21 @@ class TerrainMapEditor:
         # 標題 - 使用字體管理器渲染繁體中文
         title_text = self.font_manager.render_text("地形地圖編輯器", 24, (255, 255, 255))
         self.screen.blit(title_text, (self.panel_x + 10, y_offset))
-        y_offset += 40
+        y_offset += 50
+        
+        # 填滿地圖按鈕 - 移到頂部便於快速使用
+        button_width = self.panel_width - 20
+        button_height = 40
+        button_x = self.panel_x + 10
+        button_y = y_offset
+        button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
+        pygame.draw.rect(self.screen, (0, 180, 80), button_rect)
+        pygame.draw.rect(self.screen, (255, 255, 255), button_rect, 2)
+        fill_text = self.font_manager.render_text("填滿地圖", 24, (255, 255, 255))
+        # 文字置中
+        text_rect = fill_text.get_rect(center=(button_x + button_width // 2, button_y + button_height // 2))
+        self.screen.blit(fill_text, text_rect)
+        y_offset += 60
         
         # 當前選擇的地形
         current_text = self.font_manager.render_text("當前地形:", 18, (255, 255, 255))
@@ -285,9 +364,24 @@ class TerrainMapEditor:
             pygame.draw.rect(self.screen, color, color_rect)
             pygame.draw.rect(self.screen, (255, 255, 255), color_rect, 1)
             
-            # 地形名稱 - 使用字體管理器渲染繁體中文
+            # 地形名稱和快捷鍵 - 使用字體管理器渲染繁體中文
             text_color = (255, 255, 0) if code == self.selected_terrain else (255, 255, 255)
-            terrain_text = self.font_manager.render_text(f"{code}: {name}", 18, text_color)
+            
+            # 顯示快捷鍵提示
+            if code <= 9:
+                shortcut_key = str(code)
+            elif code == 10:
+                shortcut_key = "R"
+            elif code == 11:
+                shortcut_key = "T"
+            else:
+                shortcut_key = ""
+            
+            if shortcut_key:
+                terrain_text = self.font_manager.render_text(f"{shortcut_key}: {name}", 18, text_color)
+            else:
+                terrain_text = self.font_manager.render_text(f"{code}: {name}", 18, text_color)
+            
             self.screen.blit(terrain_text, (self.panel_x + 30, y_offset))
             
             y_offset += 20
@@ -301,6 +395,8 @@ class TerrainMapEditor:
         instructions = [
             "左鍵: 繪製地形",
             "0-9: 選擇地形",
+            "R: 選擇鐵軌",
+            "T: 選擇火車站",
             "S: 儲存地圖",
             "ESC: 離開"
         ]
@@ -379,6 +475,8 @@ def main():
         print("\n操作說明：")
         print("- 左鍵點擊或拖拽來繪製地形")
         print("- 按數字鍵 0-9 選擇不同的地形類型")
+        print("- 按 R 鍵選擇鐵軌")
+        print("- 按 T 鍵選擇火車站")
         print("- 按 S 鍵儲存地圖（自動儲存到編輯版本）")
         print("- 按 ESC 鍵離開編輯器")
         print("- 下次開啟將自動載入您的編輯結果")

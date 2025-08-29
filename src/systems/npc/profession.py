@@ -26,16 +26,16 @@ class Profession(Enum):
     # 商業人員
     GUN_SHOP_WORKER = "槍械店員工"
     STREET_VENDOR = "路邊小販"
-    FISHING_SHOP_WORKER = "釣魚店員工"
+    CHEF = "廚師"  # 替換釣魚店員工
     CONVENIENCE_STORE_WORKER = "便利商店員工"
 
     # 其他專業
-    POWER_WORKER = "電力系統員工"
+    TEACHER = "教師"  # 替換電力系統員工
     HUNTER = "獵人"
     RESIDENT = "一般居民"  # 新增：沒有特殊職業的一般居民
 
-    # 森林部落
-    TRIBE_MEMBER = "部落成員"
+    # 藝術工作者
+    ARTIST = "藝術家"  # 替換部落成員
 
 
 ######################職業資料管理######################
@@ -56,12 +56,12 @@ class ProfessionData:
         Profession.NURSE: 40,
         Profession.GUN_SHOP_WORKER: 20,
         Profession.STREET_VENDOR: 10,
-        Profession.FISHING_SHOP_WORKER: 20,
+        Profession.CHEF: 20,  # 替換釣魚店員工
         Profession.CONVENIENCE_STORE_WORKER: 30,
-        Profession.POWER_WORKER: 30,
+        Profession.TEACHER: 30,  # 替換電力系統員工
         Profession.HUNTER: 20,
         Profession.RESIDENT: 150,  # 一般居民
-        Profession.TRIBE_MEMBER: 100,  # 森林部落
+        Profession.ARTIST: 100,  # 替換部落成員
     }
 
     # 職業工作場所對應
@@ -73,12 +73,12 @@ class ProfessionData:
         Profession.NURSE: ["醫院"],
         Profession.GUN_SHOP_WORKER: ["槍械店"],
         Profession.STREET_VENDOR: ["街道"],
-        Profession.FISHING_SHOP_WORKER: ["釣魚店"],
+        Profession.CHEF: ["餐廳", "廚房"],  # 替換釣魚店員工
         Profession.CONVENIENCE_STORE_WORKER: ["便利商店"],
-        Profession.POWER_WORKER: ["電力場", "各區域"],
+        Profession.TEACHER: ["學校", "教育機構"],  # 替換電力系統員工
         Profession.HUNTER: ["森林"],
         Profession.RESIDENT: ["住宅區"],  # 一般居民主要在住宅區活動
-        Profession.TRIBE_MEMBER: ["森林部落"],
+        Profession.ARTIST: ["藝廊", "工作室"],  # 替換部落成員
     }
 
     # 職業的工作時間表 (小時制，24小時)
@@ -125,11 +125,11 @@ class ProfessionData:
             "break_start": 12,
             "break_end": 13,
         },
-        Profession.FISHING_SHOP_WORKER: {
-            "work_start": 6,
-            "work_end": 20,
-            "break_start": 12,
-            "break_end": 13,
+        Profession.CHEF: {
+            "work_start": 10,
+            "work_end": 22,
+            "break_start": 15,
+            "break_end": 16,
         },
         Profession.CONVENIENCE_STORE_WORKER: {
             "work_start": 0,  # 便利商店24小時營業
@@ -137,7 +137,7 @@ class ProfessionData:
             "break_start": None,
             "break_end": None,
         },
-        Profession.POWER_WORKER: {
+        Profession.TEACHER: {
             "work_start": 8,
             "work_end": 17,
             "break_start": 12,
@@ -155,11 +155,11 @@ class ProfessionData:
             "break_start": 12,
             "break_end": 13,
         },
-        Profession.TRIBE_MEMBER: {
-            "work_start": 6,
+        Profession.ARTIST: {
+            "work_start": 10,
             "work_end": 18,
-            "break_start": 12,
-            "break_end": 13,
+            "break_start": 14,
+            "break_end": 15,
         },
     }
 
@@ -283,12 +283,12 @@ class ProfessionData:
             Profession.NURSE: (255, 192, 203),  # 粉紅色
             Profession.GUN_SHOP_WORKER: (105, 105, 105),  # 灰色
             Profession.STREET_VENDOR: (255, 165, 0),  # 橘色
-            Profession.FISHING_SHOP_WORKER: (0, 191, 255),  # 淺藍色
+            Profession.CHEF: (255, 140, 0),  # 橘色
             Profession.CONVENIENCE_STORE_WORKER: (0, 255, 0),  # 綠色
-            Profession.POWER_WORKER: (255, 255, 0),  # 黃色
+            Profession.TEACHER: (255, 255, 0),  # 黃色
             Profession.HUNTER: (34, 139, 34),  # 森林綠
             Profession.RESIDENT: (169, 169, 169),  # 淺灰色
-            Profession.TRIBE_MEMBER: (160, 82, 45),  # 深棕色
+            Profession.ARTIST: (138, 43, 226),  # 紫羅蘭色
         }
         return color_map.get(profession, (128, 128, 128))  # 預設灰色
 

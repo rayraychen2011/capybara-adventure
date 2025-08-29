@@ -7,6 +7,7 @@ from src.core.state_manager import GameState
 from src.player.player import Player
 from src.player.input_controller import InputController
 from src.systems.wildlife import WildlifeManager
+from src.utils.font_manager import get_font_manager
 from config.settings import *
 
 
@@ -29,6 +30,9 @@ class LakeScene(Scene):
         """
         super().__init__("湖泊")
         self.state_manager = state_manager
+
+        # 初始化字體管理器
+        self.font_manager = get_font_manager()
 
         # 建立玩家角色 - 初始位置會在 enter() 時設定
         self.player = Player(SCREEN_WIDTH - 100, SCREEN_HEIGHT // 2)
@@ -479,8 +483,6 @@ class LakeScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        font = pygame.font.Font(None, 20)
-
         for spot in self.fishing_spots:
             # 繪製釣魚點區域
             pygame.draw.rect(screen, (255, 255, 0), spot["area"])
@@ -490,8 +492,8 @@ class LakeScene(Scene):
             position = spot["position"]
             pygame.draw.circle(screen, (0, 100, 200), position, 8)
 
-            # 繪製名稱
-            text = font.render(spot["name"], True, (0, 0, 0))
+            # 繪製名稱（使用字體管理器支援繁體中文）
+            text = self.font_manager.render_text(spot["name"], 20, (0, 0, 0))
             text_rect = text.get_rect(center=(position[0], position[1] - 20))
             screen.blit(text, text_rect)
 
@@ -520,8 +522,8 @@ class LakeScene(Scene):
         pygame.draw.rect(screen, (255, 255, 0), self.exit_area)
         pygame.draw.rect(screen, (0, 0, 0), self.exit_area, 2)
 
-        font = pygame.font.Font(None, 20)
-        text = font.render("回森林", True, (0, 0, 0))
+        # 使用字體管理器支援繁體中文
+        text = self.font_manager.render_text("回森林", 20, (0, 0, 0))
         text_rect = text.get_rect(center=self.exit_area.center)
         screen.blit(text, text_rect)
 
@@ -549,17 +551,15 @@ class LakeScene(Scene):
         # 進度條邊框
         pygame.draw.rect(screen, (0, 0, 0), progress_bar_rect, 2)
 
-        # 釣魚狀態文字
-        font = pygame.font.Font(None, 36)
-        status_text = font.render("正在釣魚...", True, (255, 255, 255))
+        # 釣魚狀態文字（使用字體管理器支援繁體中文）
+        status_text = self.font_manager.render_text("正在釣魚...", 36, (255, 255, 255))
         status_rect = status_text.get_rect(center=(SCREEN_WIDTH // 2, 30))
         screen.blit(status_text, status_rect)
 
         # 釣魚點資訊
         if self.fishing_spot:
-            info_font = pygame.font.Font(None, 24)
-            info_text = info_font.render(
-                f"釣魚點: {self.fishing_spot['name']}", True, (255, 255, 255)
+            info_text = self.font_manager.render_text(
+                f"釣魚點: {self.fishing_spot['name']}", 24, (255, 255, 255)
             )
             screen.blit(info_text, (SCREEN_WIDTH // 2 - 100, 80))
 
@@ -570,11 +570,9 @@ class LakeScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        font = pygame.font.Font(None, 24)
-
-        # 顯示金錢
-        money_text = font.render(
-            f"金錢: ${self.player.get_money()}", True, (255, 255, 255)
+        # 顯示金錢（使用字體管理器支援繁體中文）
+        money_text = self.font_manager.render_text(
+            f"金錢: ${self.player.get_money()}", 24, (255, 255, 255)
         )
         screen.blit(money_text, (10, 10))
 
