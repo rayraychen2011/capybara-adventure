@@ -3,6 +3,7 @@ import pygame
 import math
 from config.settings import *
 from src.utils.helpers import clamp, fast_movement_calculate
+from src.systems.weapon_system import WeaponManager
 
 
 ######################玩家角色類別######################
@@ -71,6 +72,7 @@ class Player:
         self.low_health_active = False  # 是否正在低血量狀態
         self.last_health_recovery_time = 0  # 上次自動回復時間
         self.heartbeat_sound_playing = False  # 心跳聲是否正在播放
+        self.last_damage_time = -10.0  # 初始化為負值，確保遊戲開始時可以受傷
 
         # 重生系統
         self.spawn_position = None
@@ -104,7 +106,7 @@ class Player:
         ######################武器圓盤系統######################
         # 武器圓盤（3個槽位：槍、斧頭、空手）
         self.weapon_wheel_visible = False  # 武器圓盤是否顯示
-        self.current_weapon = "unarmed"    # 當前武器（預設空手）
+        self.current_weapon = "unarmed"    # 當前武器（預設為空手）
         self.available_weapons = {
             "gun": {"name": "槍", "unlocked": True},     # 槍（初始擁有）
             "axe": {"name": "斧頭", "unlocked": True},   # 斧頭（初始擁有） 
@@ -137,6 +139,9 @@ class Player:
         # 武器系統
         self.equipped_weapon = None
         self.has_initial_weapon = True  # 根據規格書，開始時有手槍
+        
+        # 新的武器管理器（支援槍/空手切換）
+        self.weapon_manager = WeaponManager()
 
         # 狀態效果
         self.status_effects = {}  # 狀態效果名稱 -> 剩餘時間
@@ -166,6 +171,10 @@ class Player:
         # 更新碰撞矩形位置（減少浮點數轉換）
         self.rect.x = int(self.x)
         self.rect.y = int(self.y)
+
+        # 更新武器管理器
+        if hasattr(self, 'weapon_manager') and self.weapon_manager:
+            self.weapon_manager.update(dt)
 
         # 更新狀態效果（較低優先級）
         if self.status_effects:  # 只有在有狀態效果時才更新
@@ -303,9 +312,38 @@ class Player:
         self.is_alive = False
         self.death_source = source  # 記錄死亡來源
         print("玩家死亡了...")
+        
+        # 根據新需求：玩家死亡後自動傳送到最近醫院並恢復生命值為100
+        self._teleport_to_hospital()
 
-        # 這裡會觸發死亡重生機制
-        # 實際的重生邏輯會在遊戲管理器中處理
+    def _teleport_to_hospital(self):
+        """
+        傳送玩家到最近的醫院並恢復部分生命值\n
+        """
+        # 小鎮醫院位置（假設醫院在小鎮中心附近）
+        hospital_positions = [
+            (2000, 2900),  # 小鎮中心醫院
+            (1800, 2800),  # 備用醫院位置
+        ]
+        
+        # 選擇最近的醫院（這裡簡化為選第一個）
+        hospital_x, hospital_y = hospital_positions[0]
+        
+        # 傳送到醫院
+        self.x = hospital_x
+        self.y = hospital_y
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+        
+        # 恢復生命值為100
+        self.health = 100
+        self.is_alive = True
+        
+        print(f"玩家已被傳送到醫院 ({hospital_x}, {hospital_y})，生命值恢復至 {self.health}")
+        
+        # 重置受傷狀態
+        self.is_injured = False
+        self.last_damage_time = 0
 
     def respawn(self, position=None):
         """
@@ -1332,11 +1370,17 @@ class Player:
     def can_shoot(self):
         """
         檢查是否可以射擊\n
+        考慮新的武器管理器系統\n
         \n
         回傳:\n
-        bool: 當前武器是否可以射擊\n
+        bool: 是否可以射擊\n
         """
-        return self.current_weapon == "gun"
+        if hasattr(self, 'weapon_manager') and self.weapon_manager:
+            current_weapon = self.weapon_manager.current_weapon
+            if current_weapon and current_weapon.weapon_type in ["pistol", "rifle", "shotgun", "sniper"]:
+                return current_weapon.can_shoot()
+        # 回退到原有邏輯（BB槍永遠可以射擊）
+        return True
 
     def can_chop(self):
         """
@@ -1346,3 +1390,17 @@ class Player:
         bool: 當前武器是否可以砍伐\n
         """
         return self.current_weapon == "axe"
+
+    def get_weapon_damage(self):
+        """
+        獲取當前武器的傷害值\n
+        \n
+        回傳:\n
+        int: 當前武器的傷害值\n
+        """
+        if hasattr(self, 'weapon_manager') and self.weapon_manager:
+            current_weapon = self.weapon_manager.current_weapon
+            if current_weapon:
+                return current_weapon.damage
+        # 回退到BB槍的預設傷害
+        return BB_GUN_DAMAGE

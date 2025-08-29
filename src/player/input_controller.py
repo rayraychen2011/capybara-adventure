@@ -47,7 +47,7 @@ class InputController:
             pygame.K_SPACE: "interact",  # 互動
             pygame.K_e: "interact",      # 互動（備用）
             pygame.K_q: "chop_tree",     # 砍伐樹木（新增）
-            pygame.K_c: "talk",          # 對話（新增）
+            pygame.K_c: "talk",          # 對話（新增，保留鍵盤對話功能）
             pygame.K_m: "map",           # 地圖
             pygame.K_RETURN: "confirm",  # 確認
             pygame.K_BACKSPACE: "cancel",  # 取消
@@ -56,18 +56,21 @@ class InputController:
             pygame.K_v: "vehicle",       # 載具
             pygame.K_LSHIFT: "run",      # 跑步（預留）
             pygame.K_r: "reload",        # 重新裝彈
-            # 武器選擇快捷鍵（修改為武器圓盤）
-            pygame.K_1: "weapon_1",      # 槍
-            pygame.K_2: "weapon_2",      # 斧頭
-            pygame.K_3: "weapon_3",      # 空手
+            # 武器選擇快捷鍵（新的武器系統）
+            pygame.K_1: "weapon_gun",    # 槍（武器1）
+            pygame.K_2: "weapon_unarmed", # 空手（武器2）
         }
 
         # 滑鼠按鍵映射
         self.mouse_action_keys = {
             1: "left_click",      # 左鍵點擊 - 射擊
             2: "weapon_wheel",    # 中鍵點擊 - 開啟武器圓盤
-            3: "right_click",     # 右鍵點擊
+            3: "talk_to_npc",     # 右鍵點擊 - 與NPC對話
         }
+        
+        # 滑鼠按鍵狀態追蹤（用於全自動射擊）
+        self.mouse_buttons_pressed = set()
+        self.left_mouse_held = False  # 左鍵是否持續按住
 
         # 當前移動向量
         self.movement_vector = [0, 0]
@@ -114,9 +117,23 @@ class InputController:
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             # 滑鼠按鍵按下
-            if event.button in self.mouse_action_keys:
+            self.mouse_buttons_pressed.add(event.button)
+            
+            if event.button == 1:  # 左鍵
+                self.left_mouse_held = True
+                action_triggered = "start_auto_fire"  # 開始全自動射擊
+            elif event.button in self.mouse_action_keys:
                 action_triggered = self.mouse_action_keys[event.button]
                 print(f"觸發滑鼠動作: {action_triggered}")
+        
+        elif event.type == pygame.MOUSEBUTTONUP:
+            # 滑鼠按鍵釋放
+            if event.button in self.mouse_buttons_pressed:
+                self.mouse_buttons_pressed.remove(event.button)
+            
+            if event.button == 1:  # 左鍵釋放
+                self.left_mouse_held = False
+                action_triggered = "stop_auto_fire"  # 停止全自動射擊
 
         elif event.type == pygame.MOUSEWHEEL:
             # 滑鼠滾輪事件
@@ -288,6 +305,24 @@ class InputController:
         tuple: (x, y) 移動方向向量\n
         """
         return tuple(self.movement_vector)
+
+    def is_left_mouse_held(self):
+        """
+        檢查左鍵是否持續按住（用於全自動射擊）\n
+        \n
+        回傳:\n
+        bool: 左鍵是否持續按住\n
+        """
+        return self.left_mouse_held
+
+    def get_mouse_position(self):
+        """
+        獲取當前滑鼠位置\n
+        \n
+        回傳:\n
+        tuple: (x, y) 滑鼠螢幕座標\n
+        """
+        return pygame.mouse.get_pos()
 
     def stop_all_input(self):
         """

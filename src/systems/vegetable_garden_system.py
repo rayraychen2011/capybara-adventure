@@ -2,7 +2,7 @@
 import pygame
 import random
 import time
-from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
+from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT, VEGETABLE_GARDEN_REGROW_TIME
 from src.utils.font_manager import FontManager
 
 
@@ -18,14 +18,16 @@ class VegetableGardenSystem:
     4. 顯示蔬果的成熟狀態\n
     """
 
-    def __init__(self, terrain_system=None):
+    def __init__(self, terrain_system=None, time_manager=None):
         """
         初始化蔬果園採集系統\n
         \n
         參數:\n
         terrain_system (TerrainBasedSystem): 地形系統\n
+        time_manager (TimeManager): 時間管理系統，用於同步遊戲時間\n
         """
         self.terrain_system = terrain_system
+        self.time_manager = time_manager
         
         # 字體管理器
         self.font_manager = FontManager()
@@ -35,8 +37,12 @@ class VegetableGardenSystem:
         
         # 採集設定
         self.harvest_reward = 5  # 採摘獎勵金額
-        self.regrow_time = 24   # 重新生長時間（現實秒數，對應遊戲內一天）
+        self.regrow_time = VEGETABLE_GARDEN_REGROW_TIME   # 重新生長時間（12分鐘對應遊戲內一天）
         self.interaction_range = 25  # 互動範圍（自動採收檢測範圍）
+        
+        # 遊戲時間相關設定
+        self.use_game_time = time_manager is not None  # 是否使用遊戲時間系統
+        self.regrow_game_hours = 24  # 遊戲內24小時重新生長
         
         # 蔬果類型和顏色
         self.vegetable_types = [
@@ -51,7 +57,7 @@ class VegetableGardenSystem:
         self.total_harvested = 0
         self.total_money_earned = 0
         
-        print("蔬果園採集系統初始化完成")
+        print(f"蔬果園採集系統初始化完成，使用{'遊戲時間' if self.use_game_time else '現實時間'}系統")
 
     def initialize_gardens(self):
         """
@@ -72,7 +78,8 @@ class VegetableGardenSystem:
                     "position": garden_data['position'],
                     "vegetable_type": random.choice(self.vegetable_types),
                     "is_ready": garden_data.get('harvest_ready', True),  # 使用地形系統的狀態
-                    "last_harvest_time": 0,  # 上次採摘時間
+                    "last_harvest_time": 0,  # 上次採摘時間（現實時間）
+                    "last_harvest_game_time": None,  # 上次採摘時的遊戲時間
                     "size": garden_data.get('size', 10),  # 使用地形系統的大小
                     "terrain_garden": garden_data  # 保存對原始數據的引用
                 }
@@ -88,15 +95,56 @@ class VegetableGardenSystem:
         參數:\n
         dt (float): 時間間隔\n
         """
-        current_time = time.time()
-        
         # 檢查蔬果重新生長
         for garden in self.vegetable_gardens:
             if not garden["is_ready"]:
-                # 檢查是否到了重新生長時間
-                if current_time - garden["last_harvest_time"] >= self.regrow_time:
-                    garden["is_ready"] = True
-                    print(f"蔬果園 {garden['id']} 的{garden['vegetable_type']['name']}重新生長完成")
+                if self.use_game_time and self.time_manager:
+                    # 使用遊戲時間系統檢查重新生長
+                    self._check_game_time_regrow(garden)
+                else:
+                    # 使用現實時間檢查重新生長
+                    self._check_real_time_regrow(garden)
+
+    def _check_game_time_regrow(self, garden):
+        """
+        基於遊戲時間檢查蔬果重新生長\n
+        \n
+        參數:\n
+        garden (dict): 蔬果園物件\n
+        """
+        if garden["last_harvest_game_time"] is None:
+            return
+        
+        last_harvest_hour = garden["last_harvest_game_time"]["hour"]
+        last_harvest_day = garden["last_harvest_game_time"]["day"]
+        
+        current_hour = self.time_manager.hour
+        current_day = self.time_manager.day_number
+        
+        # 計算已經過去的遊戲時間（小時）
+        total_hours_passed = (current_day - last_harvest_day) * 24 + (current_hour - last_harvest_hour)
+        
+        # 如果超過重新生長時間（24遊戲小時）
+        if total_hours_passed >= self.regrow_game_hours:
+            garden["is_ready"] = True
+            vegetable_name = garden["vegetable_type"]["name"]
+            print(f"🌱 蔬果園 {garden['id']} 的{vegetable_name}重新生長完成（遊戲時間{total_hours_passed}小時後）")
+
+    def _check_real_time_regrow(self, garden):
+        """
+        基於現實時間檢查蔬果重新生長\n
+        \n
+        參數:\n
+        garden (dict): 蔬果園物件\n
+        """
+        current_time = time.time()
+        
+        # 檢查是否到了重新生長時間
+        if current_time - garden["last_harvest_time"] >= self.regrow_time:
+            garden["is_ready"] = True
+            vegetable_name = garden["vegetable_type"]["name"]
+            elapsed_minutes = (current_time - garden["last_harvest_time"]) / 60
+            print(f"🌱 蔬果園 {garden['id']} 的{vegetable_name}重新生長完成（現實時間{elapsed_minutes:.1f}分鐘後）")
 
     def check_auto_harvest(self, player_position, player):
         """
@@ -173,9 +221,16 @@ class VegetableGardenSystem:
         """
         vegetable_name = garden["vegetable_type"]["name"]
         
-        # 標記為已採摘
+        # 標記為已採摘並記錄時間
         garden["is_ready"] = False
         garden["last_harvest_time"] = time.time()
+        
+        # 如果使用遊戲時間系統，也記錄遊戲時間
+        if self.use_game_time and self.time_manager:
+            garden["last_harvest_game_time"] = {
+                "hour": self.time_manager.hour,
+                "day": self.time_manager.day_number
+            }
         
         # 同步更新地形系統中的蔬果園狀態
         if "terrain_garden" in garden:
@@ -190,7 +245,13 @@ class VegetableGardenSystem:
         self.total_harvested += 1
         self.total_money_earned += self.harvest_reward
         
-        print(f"🌱 自動採摘 {vegetable_name} 獲得 {self.harvest_reward} 元")
+        # 計算下次成熟時間
+        if self.use_game_time and self.time_manager:
+            next_ready_day = self.time_manager.day_number + 1
+            print(f"🌱 自動採摘 {vegetable_name} 獲得 {self.harvest_reward} 元（遊戲第{next_ready_day}天重新成熟）")
+        else:
+            next_ready_minutes = self.regrow_time / 60
+            print(f"🌱 自動採摘 {vegetable_name} 獲得 {self.harvest_reward} 元（{next_ready_minutes:.0f}分鐘後重新成熟）")
         
         return {
             "success": True,

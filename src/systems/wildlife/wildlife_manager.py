@@ -2,6 +2,7 @@
 import pygame
 import random
 import time
+import math
 from src.systems.wildlife.animal import Animal, AnimalState
 from src.systems.wildlife.animal_data import AnimalType, AnimalData, RarityLevel
 from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
@@ -31,10 +32,14 @@ class WildlifeManager:
         animal (Animal): 攻擊的動物\n
         player_position (tuple): 玩家位置\n
         """
+        # 使用動物的攻擊傷害
+        damage = animal.get_damage()
+        
         # 這個方法需要由外部場景系統調用，因為野生動物管理器沒有直接的玩家引用
         # 設置一個回調機制供外部系統處理
         if hasattr(self, 'player_attack_callback') and self.player_attack_callback:
-            self.player_attack_callback(animal.attack_damage, animal)
+            self.player_attack_callback(damage, animal)
+            print(f"{animal.animal_type.value} 對玩家造成了 {damage} 點傷害！")
 
     def set_player_attack_callback(self, callback):
         """
@@ -56,11 +61,26 @@ class WildlifeManager:
 
         print("野生動物管理器初始化完成")
 
+        # 新的動物數量控制（按稀有度）
+        self.target_counts = {
+            RarityLevel.RARE: 20,       # 稀有動物20隻
+            RarityLevel.SUPER_RARE: 10, # 超稀動物10隻
+            RarityLevel.LEGENDARY: 5    # 傳奇動物5隻
+        }
+        
+        self.current_counts = {
+            RarityLevel.RARE: 0,
+            RarityLevel.SUPER_RARE: 0,
+            RarityLevel.LEGENDARY: 0
+        }
+
         # 生成控制
-        self.max_forest_animals = 15  # 森林最大動物數量
-        self.max_lake_animals = 10  # 湖泊最大動物數量
-        self.spawn_cooldown = 5.0  # 生成冷卻時間 (秒)
+        self.spawn_cooldown = 3.0  # 生成冷卻時間 (秒)
         self.last_spawn_time = 0  # 上次生成時間
+
+        # 兼容性屬性（用於舊代碼）
+        self.max_forest_animals = 25
+        self.max_lake_animals = 10
 
         # 環境邊界 (會從場景傳入)
         self.forest_bounds = (100, 100, 600, 400)  # 森林區域邊界
@@ -68,18 +88,39 @@ class WildlifeManager:
 
         # 地形系統引用 - 用於檢查地形代碼
         self.terrain_system = None
+        
+        # 小鎮中心位置（用於計算距離）
+        self.town_center = (2000, 3000)  # 小鎮中心座標
 
         # 互動檢測
         self.interaction_range = 50  # 玩家互動範圍
         self.hunting_range = 40  # 狩獵攻擊範圍
         self.fishing_range = 60  # 釣魚範圍
 
-        # 保育系統已移除
-
         # 統計資料
         self.total_spawned = 0  # 總生成數量
         self.total_hunted = 0  # 總狩獵數量
         self.total_fished = 0  # 總釣魚數量
+        
+    def set_terrain_system(self, terrain_system):
+        """設置地形系統引用"""
+        self.terrain_system = terrain_system
+        
+    def set_world_bounds(self, bounds):
+        """設置世界邊界"""
+        self.forest_bounds = bounds
+        self.lake_bounds = bounds
+        
+    def get_wildlife_statistics(self):
+        """獲取野生動物統計信息"""
+        return {
+            "total_animals": len(self.all_animals),
+            "forest_animals": len(self.forest_animals),
+            "lake_animals": len(self.lake_animals),
+            "rare_count": self.current_counts.get(RarityLevel.RARE, 0),
+            "super_rare_count": self.current_counts.get(RarityLevel.SUPER_RARE, 0),
+            "legendary_count": self.current_counts.get(RarityLevel.LEGENDARY, 0)
+        }
 
     @property
     def animals(self):
@@ -171,119 +212,112 @@ class WildlifeManager:
 
     def initialize_animals(self, scene_type="all"):
         """
-        初始化動物群體 - 生成初始動物\n
+        初始化動物生成系統 - 新的分佈式生成\n
         \n
         參數:\n
-        scene_type (str): 場景類型 ("forest", "lake", "grassland", 或 "all")\n
+        scene_type (str): 場景類型 ("forest", "lake", "grassland", "all")\n
         """
+        if not self.terrain_system:
+            print("警告：沒有地形系統，使用簡化的動物生成")
+
+        print("開始初始化野生動物...")
+        
         # 清空現有動物
         self.forest_animals.clear()
-        self.lake_animals.clear()
+        self.lake_animals.clear() 
         self.all_animals.clear()
+        self.current_counts = {rarity: 0 for rarity in RarityLevel}
 
-        # 根據場景類型生成對應動物
-        if scene_type in ["forest", "all"]:
-            # 檢查森林邊界有效性
-            if self.forest_bounds[2] > 60 and self.forest_bounds[3] > 60:
-                # 生成森林動物 - 新的動物系統
-                forest_species = [
-                    AnimalType.RABBIT,      # 稀有
-                    AnimalType.SHEEP,       # 稀有
-                    AnimalType.MOUNTAIN_LION, # 超稀有
-                    AnimalType.BLACK_PANTHER, # 超稀有
-                    AnimalType.BEAR,        # 傳奇
-                ]
+        # 按稀有度生成動物
+        self._generate_animals_by_rarity()
 
-                for _ in range(6):  # 減少森林動物，為草原動物騰出空間
-                    animal_type = random.choice(forest_species)
-                    self._spawn_animal(animal_type, "forest")
+        total_animals = len(self.all_animals)
+        print(f"野生動物初始化完成：")
+        print(f"  稀有動物: {self.current_counts[RarityLevel.RARE]}/{self.target_counts[RarityLevel.RARE]}")
+        print(f"  超稀動物: {self.current_counts[RarityLevel.SUPER_RARE]}/{self.target_counts[RarityLevel.SUPER_RARE]}")  
+        print(f"  傳奇動物: {self.current_counts[RarityLevel.LEGENDARY]}/{self.target_counts[RarityLevel.LEGENDARY]}")
+        print(f"  總計: {total_animals} 隻動物")
 
-        if scene_type in ["grassland", "all"]:
-            # 在草原生成動物 - 新增草原動物系統
-            grassland_species = [
-                AnimalType.RABBIT,      # 兔子喜歡草原
-                AnimalType.SHEEP,       # 羊群在草原覓食
-            ]
-
-            for _ in range(8):  # 在草原生成8隻動物
-                animal_type = random.choice(grassland_species)
-                self._spawn_animal(animal_type, "grassland")
-
-        if scene_type in ["lake", "all"]:
-            # 檢查湖泊邊界有效性
-            if self.lake_bounds[2] > 60 and self.lake_bounds[3] > 60:
-                # 生成湖泊動物 - 主要是烏龜
-                lake_species = [
-                    AnimalType.TURTLE,      # 稀有
-                ]
-
-                for _ in range(4):  # 湖泊動物保持原數量
-                    animal_type = random.choice(lake_species)
-                    self._spawn_animal(animal_type, "lake")
+    def _generate_animals_by_rarity(self):
+        """按稀有度生成動物"""
+        
+        # 稀有動物 (20隻)
+        rare_animals = AnimalData.get_animals_by_rarity(RarityLevel.RARE)
+        for animal_type in rare_animals:
+            count_per_type = self.target_counts[RarityLevel.RARE] // len(rare_animals)
+            
+            for _ in range(count_per_type):
+                # 根據動物類型選擇棲息地
+                if animal_type == AnimalType.TURTLE:
+                    habitat = "lake"
+                elif animal_type == AnimalType.SHEEP:
+                    habitat = "grassland"
+                else:
+                    habitat = "forest"
+                
+                self._spawn_animal(animal_type, habitat)
+        
+        # 超稀動物 (10隻)  
+        super_rare_animals = AnimalData.get_animals_by_rarity(RarityLevel.SUPER_RARE)
+        for animal_type in super_rare_animals:
+            count_per_type = self.target_counts[RarityLevel.SUPER_RARE] // len(super_rare_animals)
+            
+            for _ in range(count_per_type):
+                habitat = "forest"  # 超稀動物主要在森林
+                self._spawn_animal(animal_type, habitat)
+        
+        # 傳奇動物 (5隻)
+        legendary_animals = AnimalData.get_animals_by_rarity(RarityLevel.LEGENDARY)
+        for animal_type in legendary_animals:
+            count_per_type = self.target_counts[RarityLevel.LEGENDARY] // len(legendary_animals)
+            
+            for _ in range(count_per_type):
+                habitat = "forest"  # 傳奇動物在森林深處
+                self._spawn_animal(animal_type, habitat)
 
         print(
             f"初始化完成：森林動物 {len(self.forest_animals)} 隻，湖泊動物 {len(self.lake_animals)} 隻，草原動物將分散在地圖各處"
         )
 
-    def _spawn_animal(self, animal_type, habitat):
+    def _spawn_animal(self, animal_type, habitat, position=None):
         """
-        生成新動物 - 基於地形代碼的位置選擇\n
+        生成新動物 - 基於地形代碼和距離的位置選擇\n
         \n
         參數:\n
         animal_type (AnimalType): 動物種類\n
         habitat (str): 棲息地類型 ("forest", "lake", 或 "grassland")\n
+        position (tuple): 指定位置，如果為None則自動選擇\n
         \n
         回傳:\n
         Animal: 生成的動物物件\n
         """
-        # 根據棲息地選擇容器和地形代碼
+        # 檢查稀有度數量限制
+        rarity = AnimalData.get_animal_property(animal_type, "rarity")
+        if rarity and self.current_counts.get(rarity, 0) >= self.target_counts.get(rarity, 0):
+            return None  # 達到該稀有度的數量上限
+
+        # 根據棲息地選擇地形代碼
         if habitat == "forest":
-            container = self.forest_animals
-            max_count = self.max_forest_animals
-            terrain_code = 1  # 森林地形代碼
-            bounds = self.forest_bounds  # 後備邊界
+            terrain_codes = [1, 9]  # 森林、山丘
+            bounds = self.forest_bounds
         elif habitat == "lake":
-            container = self.lake_animals
-            max_count = self.max_lake_animals
-            terrain_code = 2  # 水域地形代碼
-            bounds = self.lake_bounds  # 後備邊界
+            terrain_codes = [2]  # 水域
+            bounds = self.lake_bounds
         elif habitat == "grassland":
-            # 草原動物使用森林動物容器，但在草原地形生成
-            container = self.forest_animals  # 與森林動物共享容器以便管理
-            max_count = self.max_forest_animals + 8  # 增加草原動物的配額
-            terrain_code = 0  # 草原地形代碼
-            bounds = self.forest_bounds  # 使用相同的搜尋邊界
+            terrain_codes = [0, 7, 8]  # 草地、公園、農地
+            bounds = self.forest_bounds
         else:
             print(f"未知的棲息地類型: {habitat}")
             return None
 
-        # 檢查數量限制（草原動物特殊處理）
-        if habitat != "grassland" and len(container) >= max_count:
-            return None
-
-        # 嘗試在對應地形代碼的位置生成動物
-        if self.terrain_system:
-            terrain_positions = self._find_terrain_positions(terrain_code, 10)
-            if terrain_positions:
-                # 從符合地形的位置中隨機選擇
-                x, y = random.choice(terrain_positions)
-                print(f"在地形代碼 {terrain_code} 找到位置: ({x}, {y})")
-            else:
-                # 如果找不到合適的地形位置，使用後備邊界
-                print(f"找不到地形代碼 {terrain_code} 的位置，使用後備邊界")
-                if bounds[2] <= 60 or bounds[3] <= 60:  # 寬度或高度太小
-                    print(f"棲息地 {habitat} 邊界太小，無法生成動物: {bounds}")
-                    return None
-                x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
-                y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
+        # 選擇生成位置
+        if position:
+            x, y = position
         else:
-            # 沒有地形系統時使用原始邊界生成方法
-            if bounds[2] <= 60 or bounds[3] <= 60:  # 寬度或高度太小
-                print(f"棲息地 {habitat} 邊界太小，無法生成動物: {bounds}")
+            x, y = self._select_spawn_position(animal_type, terrain_codes, rarity)
+            if x is None:
+                print(f"無法為 {animal_type.value} 找到合適的生成位置")
                 return None
-
-            x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
-            y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
 
         # 創建動物
         animal = Animal(animal_type, (x, y), bounds, habitat)
@@ -293,12 +327,139 @@ class WildlifeManager:
             animal.set_terrain_system(self.terrain_system)
 
         # 添加到對應容器
-        container.append(animal)
+        if habitat == "lake":
+            self.lake_animals.append(animal)
+        else:
+            self.forest_animals.append(animal)
+        
         self.all_animals.append(animal)
+        
+        # 更新數量統計
+        if rarity:
+            self.current_counts[rarity] = self.current_counts.get(rarity, 0) + 1
+        
         self.total_spawned += 1
 
-        print(f"在 {habitat} (地形代碼:{terrain_code}) 生成 {animal_type.value} (總計: {self.total_spawned})")
+        print(f"在 {habitat} 生成 {animal_type.value}，距離小鎮: {self._distance_to_town(x, y):.0f}m")
         return animal
+
+    def _select_spawn_position(self, animal_type, terrain_codes, rarity):
+        """
+        基於地形和均勻分布選擇生成位置\n
+        新需求：確保動物在地圖上均勻分布，避免聚集在某些區域\n
+        \n
+        參數:\n
+        animal_type (AnimalType): 動物種類\n
+        terrain_codes (list): 允許的地形代碼\n
+        rarity (RarityLevel): 稀有度\n
+        \n
+        回傳:\n
+        tuple: (x, y) 位置座標，如果找不到則返回 (None, None)\n
+        """
+        if not self.terrain_system:
+            # 沒有地形系統時使用簡單生成
+            bounds = self.forest_bounds
+            x = random.randint(bounds[0] + 30, bounds[0] + bounds[2] - 30)
+            y = random.randint(bounds[1] + 30, bounds[1] + bounds[3] - 30)
+            return x, y
+
+        # 將地圖劃分為網格以確保均勻分布
+        grid_size = 10  # 將地圖劃分為 10x10 的網格
+        cell_width = self.terrain_system.map_width // grid_size
+        cell_height = self.terrain_system.map_height // grid_size
+        
+        # 記錄每個網格已生成的動物數量
+        if not hasattr(self, '_spawn_grid'):
+            self._spawn_grid = [[0 for _ in range(grid_size)] for _ in range(grid_size)]
+        
+        # 找到動物數量最少的網格區域
+        min_count = float('inf')
+        candidate_cells = []
+        
+        for grid_y in range(grid_size):
+            for grid_x in range(grid_size):
+                current_count = self._spawn_grid[grid_y][grid_x]
+                if current_count < min_count:
+                    min_count = current_count
+                    candidate_cells = [(grid_x, grid_y)]
+                elif current_count == min_count:
+                    candidate_cells.append((grid_x, grid_y))
+        
+        # 從候選網格中選擇一個進行生成
+        attempts = 0
+        max_attempts = 50
+        
+        while attempts < max_attempts and candidate_cells:
+            # 隨機選擇一個候選網格
+            grid_cell_x, grid_cell_y = random.choice(candidate_cells)
+            
+            # 在該網格內尋找合適的生成位置
+            start_x = grid_cell_x * cell_width
+            start_y = grid_cell_y * cell_height
+            end_x = min((grid_cell_x + 1) * cell_width, self.terrain_system.map_width - 1)
+            end_y = min((grid_cell_y + 1) * cell_height, self.terrain_system.map_height - 1)
+            
+            # 在網格內隨機選擇位置
+            for _ in range(20):  # 在該網格內最多嘗試20次
+                grid_x = random.randint(start_x, end_x)
+                grid_y = random.randint(start_y, end_y)
+                
+                # 檢查地形是否合適
+                world_x = grid_x * 20 + 10
+                world_y = grid_y * 20 + 10
+                terrain_code = self.terrain_system.get_terrain_at_world_pos(world_x, world_y)
+                
+                if terrain_code in terrain_codes:
+                    # 檢查是否與現有動物過於靠近（最小距離100像素）
+                    min_distance = 100
+                    too_close = False
+                    
+                    for existing_animal in self.all_animals:
+                        distance = math.sqrt((world_x - existing_animal.x)**2 + (world_y - existing_animal.y)**2)
+                        if distance < min_distance:
+                            too_close = True
+                            break
+                    
+                    if not too_close:
+                        # 更新網格計數
+                        self._spawn_grid[grid_cell_y][grid_cell_x] += 1
+                        print(f"在網格 ({grid_cell_x}, {grid_cell_y}) 生成 {animal_type.value}，距離其他動物 > {min_distance}px")
+                        return world_x, world_y
+            
+            attempts += 1
+        
+        # 如果均勻分布失敗，使用原有的簡單隨機生成
+        print(f"均勻分布生成失敗，使用隨機位置生成 {animal_type.value}")
+        for _ in range(50):
+            grid_x = random.randint(0, self.terrain_system.map_width - 1)
+            grid_y = random.randint(0, self.terrain_system.map_height - 1)
+            world_x = grid_x * 20 + 10
+            world_y = grid_y * 20 + 10
+            terrain_code = self.terrain_system.get_terrain_at_world_pos(world_x, world_y)
+            if terrain_code in terrain_codes:
+                return world_x, world_y
+        
+        return None, None
+
+    def _distance_to_town(self, x, y):
+        """計算到小鎮中心的距離"""
+        dx = x - self.town_center[0]
+        dy = y - self.town_center[1]
+        return math.sqrt(dx * dx + dy * dy)
+
+    def _is_near_water(self, grid_x, grid_y, radius=3):
+        """檢查位置是否靠近水邊"""
+        for dx in range(-radius, radius + 1):
+            for dy in range(-radius, radius + 1):
+                check_x = grid_x + dx
+                check_y = grid_y + dy
+                if (0 <= check_x < self.terrain_system.map_width and 
+                    0 <= check_y < self.terrain_system.map_height):
+                    world_x = check_x * 20 + 10
+                    world_y = check_y * 20 + 10
+                    if self.terrain_system.get_terrain_at_world_pos(world_x, world_y) == 2:  # 水體
+                        return True
+        return False
 
     def update(self, dt, player_position, current_scene):
         """
@@ -700,3 +861,85 @@ class WildlifeManager:
                     return True
         
         return False
+    
+    def handle_player_shoot(self, player_position, target_position, weapon_damage, weapon_range):
+        """
+        處理玩家射擊動物\n
+        
+        參數:\n
+        player_position (tuple): 玩家位置\n
+        target_position (tuple): 射擊目標位置\n
+        weapon_damage (int): 武器傷害\n
+        weapon_range (float): 武器射程\n
+        
+        回傳:\n
+        dict: 射擊結果 {\n
+            'hit_animal': Animal or None - 被擊中的動物\n
+            'damage_dealt': int - 造成的傷害\n
+            'kill': bool - 是否擊殺\n
+        }\n
+        """
+        px, py = player_position
+        tx, ty = target_position
+        
+        # 計算射擊距離
+        shoot_distance = math.sqrt((tx - px) ** 2 + (ty - py) ** 2)
+        
+        # 檢查射程
+        if shoot_distance > weapon_range:
+            return {'hit_animal': None, 'damage_dealt': 0, 'kill': False}
+        
+        # 尋找射擊路徑上的動物
+        hit_animal = None
+        min_distance = float('inf')
+        
+        for animal in self.all_animals:
+            if not animal.is_alive:
+                continue
+                
+            # 計算動物到射擊線的距離
+            ax, ay = animal.x, animal.y
+            
+            # 點到線段的距離計算
+            # 射擊線：從玩家位置到目標位置
+            line_length_sq = (tx - px) ** 2 + (ty - py) ** 2
+            if line_length_sq == 0:
+                continue
+                
+            # 計算動物位置在射擊線上的投影參數
+            t = max(0, min(1, ((ax - px) * (tx - px) + (ay - py) * (ty - py)) / line_length_sq))
+            
+            # 投影點座標
+            proj_x = px + t * (tx - px)
+            proj_y = py + t * (ty - py)
+            
+            # 動物到投影點的距離
+            distance_to_line = math.sqrt((ax - proj_x) ** 2 + (ay - proj_y) ** 2)
+            
+            # 檢查是否在動物的命中範圍內（動物大小的一半）
+            hit_radius = animal.size / 2
+            if distance_to_line <= hit_radius:
+                # 計算玩家到動物的距離
+                distance_to_animal = math.sqrt((ax - px) ** 2 + (ay - py) ** 2)
+                if distance_to_animal < min_distance:
+                    min_distance = distance_to_animal
+                    hit_animal = animal
+        
+        # 如果擊中動物
+        if hit_animal:
+            # 動物受傷
+            hit_animal.take_damage(weapon_damage, None)  # 可以傳入玩家物件作為攻擊者
+            
+            # 檢查是否擊殺
+            is_kill = not hit_animal.is_alive
+            
+            if is_kill:
+                print(f"擊殺了 {hit_animal.animal_type.value}！")
+            
+            return {
+                'hit_animal': hit_animal,
+                'damage_dealt': weapon_damage,
+                'kill': is_kill
+            }
+        
+        return {'hit_animal': None, 'damage_dealt': 0, 'kill': False}

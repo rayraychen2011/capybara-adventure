@@ -28,7 +28,7 @@ class WeaponWheelUI:
         self.slot_color = (128, 128, 128)      # 未選中槽顏色
         self.selected_color = (255, 255, 0)    # 選中槽顏色
         self.equipped_color = (0, 255, 0)      # 已裝備槽顏色
-        self.text_color = (255, 255, 255)      # 文字顏色
+        self.text_color = (255, 255, 255)      # 白色文字
         
         # 字體設定 - 使用字體管理器支援繁體中文
         from src.utils.font_manager import get_font_manager
@@ -43,13 +43,13 @@ class WeaponWheelUI:
                 "position": self._calculate_position(-90),  # 上方
                 "key": "1"
             },
-            "axe": {
-                "name": "斧頭", 
+            "unarmed": {
+                "name": "空手",
                 "position": self._calculate_position(30),   # 右下
                 "key": "2"
             },
-            "unarmed": {
-                "name": "空手",
+            "axe": {
+                "name": "斧頭", 
                 "position": self._calculate_position(150),  # 左下
                 "key": "3"
             }
@@ -256,9 +256,9 @@ class WeaponWheelUI:
         if key == pygame.K_1:
             return self.select_weapon("gun")
         elif key == pygame.K_2:
-            return self.select_weapon("axe")
-        elif key == pygame.K_3:
             return self.select_weapon("unarmed")
+        elif key == pygame.K_3:
+            return self.select_weapon("axe")
         return False
 
     def handle_middle_click(self):

@@ -4,6 +4,7 @@ import random
 import math
 from src.systems.npc.npc import NPC
 from src.systems.npc.profession import Profession, ProfessionData
+from src.systems.npc.personality_system import NPCPersonalitySystem
 from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 from src.utils.font_manager import FontManager
 
@@ -35,6 +36,9 @@ class NPCManager:
         """
         # 字體管理器
         self.font_manager = FontManager()
+        
+        # 性格系統
+        self.personality_system = NPCPersonalitySystem()
         
         # NPC 容器
         self.town_npcs = []  # 小鎮 NPC (330個)
@@ -70,7 +74,7 @@ class NPCManager:
         self.render_distance = 300  # 只渲染這個距離內的 NPC
         self.update_distance = 500  # 只更新這個距離內的 NPC
 
-        print("NPC 管理器初始化完成")
+        print("NPC 管理器初始化完成（已整合性格系統）")
 
     def initialize_npcs(self, town_bounds, forest_bounds):
         """
@@ -363,7 +367,9 @@ class NPCManager:
                 position = self._find_safe_spawn_position(town_bounds)
 
             npc = NPC(profession, position)
-            npc.name = f"{profession.value}{i+1}"  # 給每個NPC一個唯一名稱
+            
+            # 使用性格系統為NPC分配個性和姓名
+            self.personality_system.assign_personality_to_npc(npc)
             
             # 路邊小販特殊標記
             if profession == Profession.STREET_VENDOR:
@@ -380,7 +386,7 @@ class NPCManager:
                 # 教師不需要分配電力區域，移除相關邏輯
                 pass
 
-        print(f"創建了 {len(self.town_npcs)} 個小鎮 NPC")
+        print(f"創建了 {len(self.town_npcs)} 個小鎮 NPC（每個都有獨特性格）")
 
     def _generate_profession_list(self, total_npcs):
         """
@@ -997,19 +1003,21 @@ class NPCManager:
 
         return closest_npc
 
-    def interact_with_npc(self, npc):
+    def interact_with_npc(self, npc, interaction_type="daily"):
         """
-        與 NPC 互動\n
+        與 NPC 互動，使用性格化對話\n
         \n
         參數:\n
         npc (NPC): 要互動的 NPC\n
+        interaction_type (str): 互動類型 ("greeting", "daily", "profession")\n
         \n
         回傳:\n
         str: 對話內容\n
         """
         if npc:
-            dialogue = npc.get_dialogue()
-            print(f"{npc.name}: {dialogue}")
+            # 使用性格系統獲取對話
+            dialogue = self.personality_system.get_npc_dialogue(npc, interaction_type)
+            print(f"{npc.name} ({npc.personality_type.value if hasattr(npc, 'personality_type') else '未知性格'}): {dialogue}")
             return dialogue
         return None
 
@@ -1046,9 +1054,19 @@ class NPCManager:
             "total_areas": len(self.power_areas),
             "current_hour": int(self.time_manager.hour) if self.time_manager else 8,
             "profession_counts": self.profession_assignments.copy(),
+            "personality_distribution": self.personality_system.get_personality_statistics(),
         }
 
         return stats
+
+    def get_personality_system(self):
+        """
+        獲取性格系統實例\n
+        \n
+        回傳:\n
+        NPCPersonalitySystem: 性格系統實例\n
+        """
+        return self.personality_system
 
     def get_power_workers(self):
         """

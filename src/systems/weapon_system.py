@@ -82,6 +82,17 @@ class Weapon:
             self.ammo_type = ".308"
             self.price = 3000
 
+        elif self.weapon_type == "unarmed":
+            self.name = "空手"
+            self.damage = 15
+            self.range = 30  # 近戰範圍
+            self.accuracy = 0.9  # 近戰命中率高
+            self.fire_rate = 3.0  # 空手攻擊速度快
+            self.magazine_size = 999  # 空手不需要彈藥
+            self.reload_time = 0  # 空手不需要重新裝彈
+            self.ammo_type = "無"
+            self.price = 0  # 空手免費
+
         else:
             # 預設手槍設定
             self.name = "基本武器"
@@ -102,6 +113,13 @@ class Weapon:
         bool: 是否可以射擊\n
         """
         current_time = time.time()
+
+        # 空手武器不需要彈藥檢查
+        if self.weapon_type == "unarmed":
+            # 只檢查攻擊速度限制
+            time_since_last_shot = current_time - self.last_shot_time
+            min_interval = 1.0 / self.fire_rate
+            return time_since_last_shot >= min_interval
 
         # 檢查彈藥
         if self.current_ammo <= 0:
@@ -148,8 +166,11 @@ class Weapon:
         if distance > self.range:
             return {"success": True, "hit": False, "damage": 0, "distance": distance}
 
-        # 消耗彈藥
-        self.current_ammo -= 1
+        # 空手武器不消耗彈藥
+        if self.weapon_type != "unarmed":
+            # 消耗彈藥
+            self.current_ammo -= 1
+        
         self.last_shot_time = time.time()
 
         # 計算命中率 (考慮距離和武器精確度)
@@ -176,6 +197,10 @@ class Weapon:
         回傳:\n
         bool: 是否開始重新裝彈\n
         """
+        # 空手武器不需要重新裝彈
+        if self.weapon_type == "unarmed":
+            return False
+            
         if self.is_reloading or self.total_ammo <= 0:
             return False
 
@@ -357,13 +382,19 @@ class WeaponManager:
         self.current_weapon = None
         self.bullets = []  # 活躍的子彈
 
-        # 初始化玩家的手槍
+        # 初始化玩家的手槍和空手
         initial_pistol = Weapon("pistol")
         initial_pistol.add_ammo(INITIAL_AMMO)
         self.add_weapon(initial_pistol)
-        self.current_weapon = initial_pistol
+        
+        # 添加空手武器
+        unarmed_weapon = Weapon("unarmed")
+        self.add_weapon(unarmed_weapon)
+        
+        # 預設使用空手
+        self.current_weapon = unarmed_weapon
 
-        print("槍械管理器初始化完成，配發初始手槍")
+        print("槍械管理器初始化完成，配發初始手槍和空手武器，預設為空手")
 
     def add_weapon(self, weapon):
         """
@@ -421,13 +452,14 @@ class WeaponManager:
         result = self.current_weapon.shoot(target_position, shooter_position)
 
         if result["success"]:
-            # 創建子彈
-            bullet = Bullet(shooter_position, target_position, result["damage"])
-            self.bullets.append(bullet)
-
-            print(
-                f"射擊! 距離: {result['distance']:.1f}, 命中: {result['hit']}, 傷害: {result['damage']}"
-            )
+            # 空手攻擊不創建子彈
+            if self.current_weapon.weapon_type == "unarmed":
+                print(f"空手攻擊! 距離: {result['distance']:.1f}, 命中: {result['hit']}, 傷害: {result['damage']}")
+            else:
+                # 創建子彈
+                bullet = Bullet(shooter_position, target_position, result["damage"])
+                self.bullets.append(bullet)
+                print(f"射擊! 距離: {result['distance']:.1f}, 命中: {result['hit']}, 傷害: {result['damage']}")
 
         return result
 
@@ -539,17 +571,22 @@ class WeaponManager:
 
         # 顯示彈藥資訊
         ammo_info = self.current_weapon.get_ammo_info()
-        ammo_text = font.render(
-            f"彈藥: {ammo_info['current']}/{ammo_info['magazine']} ({ammo_info['total']})",
-            True,
-            (255, 255, 255),
-        )
+        if self.current_weapon.weapon_type == "unarmed":
+            # 空手武器顯示不同的資訊
+            ammo_text = font.render("武器: 空手 (近戰攻擊)", True, (255, 255, 255))
+        else:
+            ammo_text = font.render(
+                f"彈藥: {ammo_info['current']}/{ammo_info['magazine']} ({ammo_info['total']})",
+                True,
+                (255, 255, 255),
+            )
         screen.blit(ammo_text, (10, SCREEN_HEIGHT - 100))
 
         # 顯示重新裝彈狀態
-        if self.current_weapon.is_reloading:
-            reload_text = font.render("重新裝彈中...", True, (255, 255, 0))
-            screen.blit(reload_text, (10, SCREEN_HEIGHT - 80))
-        elif ammo_info["current"] == 0:
-            empty_text = font.render("需要重新裝彈 (R鍵)", True, (255, 0, 0))
-            screen.blit(empty_text, (10, SCREEN_HEIGHT - 80))
+        if self.current_weapon.weapon_type != "unarmed":
+            if self.current_weapon.is_reloading:
+                reload_text = font.render("重新裝彈中...", True, (255, 255, 0))
+                screen.blit(reload_text, (10, SCREEN_HEIGHT - 80))
+            elif ammo_info["current"] == 0:
+                empty_text = font.render("需要重新裝彈 (R鍵)", True, (255, 0, 0))
+                screen.blit(empty_text, (10, SCREEN_HEIGHT - 80))

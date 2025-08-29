@@ -145,7 +145,7 @@ class TownScene(Scene):
         self.street_light_system = StreetLightSystem(self.time_manager, self.terrain_system)
         
         # 建立蔬果園採集系統
-        self.vegetable_garden_system = VegetableGardenSystem(self.terrain_system)
+        self.vegetable_garden_system = VegetableGardenSystem(self.terrain_system, self.time_manager)
         
         # 建立天氣特效系統
         self.weather_system = WeatherEffectSystem()
@@ -272,6 +272,9 @@ class TownScene(Scene):
         
         # 自動檢測建築類型
         self.building_type_detector.auto_assign_building_types(self.terrain_system.buildings)
+        
+        # 設置戰鬥系統
+        self._setup_combat_system()
 
     def _setup_player_home(self):
         """
@@ -399,18 +402,51 @@ class TownScene(Scene):
         # 更新射擊系統
         self.shooting_system.update(dt)
         
+        # 檢查子彈與野生動物碰撞
+        if hasattr(self, 'wildlife_manager') and self.wildlife_manager:
+            # 獲取所有活著的動物用於碰撞檢測
+            active_animals = [animal for animal in self.wildlife_manager.all_animals if animal.is_alive]
+            
+            # 檢查子彈碰撞
+            bullet_hits = self.shooting_system.check_bullet_collisions(active_animals)
+            
+            # 處理命中結果
+            for hit_info in bullet_hits:
+                animal = hit_info['target']
+                damage = hit_info['damage']
+                hit_pos = hit_info['position']
+                
+                print(f"💥 子彈擊中 {animal.animal_type.value}，造成 {damage} 點傷害！")
+                
+                # 檢查動物是否死亡
+                if not animal.is_alive:
+                    # 給玩家金錢獎勵
+                    if hasattr(animal, 'animal_type'):
+                        from src.systems.wildlife.animal_data import AnimalData
+                        rarity = AnimalData.get_animal_property(animal.animal_type, "rarity")
+                        reward_money = AnimalData.get_animal_rarity_value(rarity)
+                        
+                        if hasattr(self.player, 'money'):
+                            self.player.money += reward_money
+                            print(f"🏆 擊殺 {animal.animal_type.value}！獲得 {reward_money} 元")
+        
+        # 檢查持續按住滑鼠左鍵的全自動射擊（BB槍特性）
+        mouse_buttons = pygame.mouse.get_pressed()
+        if mouse_buttons[0]:  # 左鍵按住
+            mouse_pos = pygame.mouse.get_pos()
+            camera_offset = (self.camera_controller.camera_x, self.camera_controller.camera_y)
+            self.shooting_system.handle_mouse_shoot(self.player, mouse_pos, camera_offset)
+        
         # 更新準心位置
         mouse_pos = pygame.mouse.get_pos()
         self.crosshair_system.update(mouse_pos)
         
         # 檢查武器裝備狀態來顯示/隱藏準心
-        # 只有當玩家裝備了槍時才顯示準心
-        if self.player.can_shoot():
-            self.crosshair_system.show()
-        else:
-            self.crosshair_system.hide()
-        if (hasattr(self.player, 'equipped_weapon') and 
-            self.player.equipped_weapon is not None):
+        # 只有當玩家裝備了槍時才顯示準心（空手時不顯示）
+        if (hasattr(self.player, 'weapon_manager') and 
+            self.player.weapon_manager and 
+            self.player.weapon_manager.current_weapon and
+            self.player.weapon_manager.current_weapon.weapon_type != "unarmed"):
             self.crosshair_system.show()
         else:
             self.crosshair_system.hide()
@@ -644,6 +680,9 @@ class TownScene(Scene):
         # 繪製玩家
         self.player.draw(screen, camera_x, camera_y)
 
+        # 繪製子彈（在玩家之後，UI之前）
+        self.shooting_system.draw_bullets(screen, (camera_x, camera_y))
+
         # 繪製十字準星（如果有配備槍）
         if (hasattr(self.player, 'current_equipment') and 
             self.player.current_equipment == 1):  # 1號槽位是槍
@@ -662,6 +701,30 @@ class TownScene(Scene):
         # 首先讓輸入控制器處理事件（這對移動很重要）
         action = self.input_controller.handle_event(event)
         
+        # 處理新的動作
+        if action:
+            if action == "weapon_gun":
+                # 切換到槍
+                if hasattr(self.player, 'weapon_manager'):
+                    self.player.weapon_manager.switch_weapon("pistol")
+                print("切換到槍")
+                return True
+            elif action == "weapon_unarmed":
+                # 切換到空手
+                if hasattr(self.player, 'weapon_manager'):
+                    self.player.weapon_manager.switch_weapon("unarmed")
+                print("切換到空手")
+                return True
+            elif action == "talk_to_npc":
+                # 右鍵與NPC對話
+                world_x = event.pos[0] + self.camera_controller.camera_x
+                world_y = event.pos[1] + self.camera_controller.camera_y
+                clicked_npc = self._find_npc_at_position(world_x, world_y)
+                if clicked_npc:
+                    self.npc_dialogue_ui.show_dialogue(clicked_npc)
+                    print(f"與NPC {clicked_npc.name} 對話")
+                    return True
+        
         # 處理滑鼠事件（武器圓盤、射擊、小地圖、住宅點擊、火車站等）
         if event.type == pygame.MOUSEBUTTONDOWN:
             # 優先處理NPC對話UI點擊
@@ -672,7 +735,7 @@ class TownScene(Scene):
             if self.phone_ui.handle_click(event.pos, self.player, self.time_manager):
                 return True
                 
-            if event.button == 1:  # 左鍵點擊 - NPC對話、射擊或其他互動
+            if event.button == 1:  # 左鍵點擊 - 射擊或其他互動
                 if self.house_interior_ui.is_visible():
                     # 如果住宅內部檢視已顯示，處理點擊事件
                     self.house_interior_ui.handle_click(event.pos)
@@ -689,17 +752,10 @@ class TownScene(Scene):
                     world_x = event.pos[0] + self.camera_controller.camera_x
                     world_y = event.pos[1] + self.camera_controller.camera_y
                     
-                    # 優先檢查NPC點擊（即時響應對話）
-                    clicked_npc = self._find_npc_at_position(world_x, world_y)
-                    if clicked_npc:
-                        self.npc_dialogue_ui.show_dialogue(clicked_npc)
-                        return True
-                    
                     # 檢查玩家是否裝備槍械進行射擊
-                    elif self.player.can_shoot():  # 玩家裝備了槍
-                        # 射擊功能（新的射擊系統）
-                        camera_offset = (self.camera_controller.camera_x, self.camera_controller.camera_y)
-                        self.shooting_system.handle_mouse_shoot(self.player, event.pos, camera_offset)
+                    if self.player.can_shoot():  # 玩家裝備了槍
+                        # 射擊功能（攻擊野生動物）
+                        self._handle_weapon_shoot(event.pos, world_x, world_y)
                     else:
                         # 嘗試處理火車站點擊
                         if not self.terrain_system.handle_railway_click((world_x, world_y), self.player):
@@ -709,7 +765,7 @@ class TownScene(Scene):
             elif event.button == 2:  # 中鍵點擊 - 武器圓盤
                 self.player.toggle_weapon_wheel()
                 return True
-            elif event.button == 3:  # 右鍵點擊 - 商店互動、砍樹、採摘蔬果園或關閉火車站選擇畫面
+            elif event.button == 3:  # 右鍵點擊 - NPC對話、商店互動、砍樹、採摘蔬果園或關閉火車站選擇畫面
                 if self.terrain_system.railway_system.show_destination_menu:
                     self.terrain_system.railway_system.close_destination_menu()
                     return True
@@ -721,6 +777,13 @@ class TownScene(Scene):
                     # 計算世界座標
                     world_x = event.pos[0] + self.camera_controller.camera_x
                     world_y = event.pos[1] + self.camera_controller.camera_y
+                    
+                    # 優先檢查NPC點擊（右鍵對話）
+                    clicked_npc = self._find_npc_at_position(world_x, world_y)
+                    if clicked_npc:
+                        self.npc_dialogue_ui.show_dialogue(clicked_npc)
+                        print(f"右鍵與NPC {clicked_npc.name} 對話")
+                        return True
                     
                     # 優先嘗試新的右鍵建築物互動（槍械店、便利商店、路邊小販、教堂、服裝店）
                     camera_offset = (self.camera_controller.camera_x, self.camera_controller.camera_y)
@@ -798,38 +861,37 @@ class TownScene(Scene):
                     self.state_manager.change_state(GameState.PAUSED)
                     return True
             
-            # 數字鍵1-3 - 武器選擇
-            elif pygame.K_1 <= event.key <= pygame.K_3:
+            # 數字鍵1-2 - 武器選擇
+            elif event.key == pygame.K_1:
+                # 切換到手槍
+                if hasattr(self.player, 'weapon_manager') and self.player.weapon_manager:
+                    self.player.weapon_manager.switch_weapon("pistol")
+                    print("切換到手槍")
+                return True
+            elif event.key == pygame.K_2:
+                # 切換到空手
+                if hasattr(self.player, 'weapon_manager') and self.player.weapon_manager:
+                    self.player.weapon_manager.switch_weapon("unarmed")
+                    print("切換到空手")
+                return True
+            
+            # 數字鍵3-6 - 火車站目的地選擇
+            elif pygame.K_3 <= event.key <= pygame.K_6:
                 if self.terrain_system.railway_system.show_destination_menu:
-                    selection_index = event.key - pygame.K_1
+                    selection_index = event.key - pygame.K_3  # 3鍵對應索引0
                     if self.terrain_system.railway_system.handle_destination_selection(selection_index, self.player):
                         print("🚂 快速旅行成功！")
                     return True
                 elif self.player.weapon_wheel_visible:
-                    # 如果武器圓盤顯示，選擇武器
+                    # 如果武器圓盤顯示，處理舊的武器選擇邏輯
                     weapon_key = str(event.key - pygame.K_0)  # 轉換為字符串
                     self.weapon_wheel_ui.select_weapon_by_key(weapon_key)
-                    if weapon_key == "1":
-                        self.player.select_weapon("gun")
-                    elif weapon_key == "2":
-                        self.player.select_weapon("axe")
-                    elif weapon_key == "3":
-                        self.player.select_weapon("unarmed")
-                    return True
-                else:
-                    # 直接選擇武器（無需顯示圓盤）
-                    if event.key == pygame.K_1:
-                        self.player.select_weapon("gun")
-                    elif event.key == pygame.K_2:
-                        self.player.select_weapon("axe")  
-                    elif event.key == pygame.K_3:
-                        self.player.select_weapon("unarmed")
                     return True
             
-            # 數字鍵4-9 - 火車站目的地選擇（保留原功能）
-            elif pygame.K_4 <= event.key <= pygame.K_9:
+            # 數字鍵7-9 - 火車站目的地選擇（擴展）
+            elif pygame.K_7 <= event.key <= pygame.K_9:
                 if self.terrain_system.railway_system.show_destination_menu:
-                    selection_index = event.key - pygame.K_1
+                    selection_index = event.key - pygame.K_3  # 保持與上面的邏輯一致
                     if self.terrain_system.railway_system.handle_destination_selection(selection_index, self.player):
                         print("🚂 快速旅行成功！")
                     return True
@@ -1499,3 +1561,74 @@ class TownScene(Scene):
                 return npc
         
         return None
+    
+    def _handle_weapon_shoot(self, screen_pos, world_x, world_y):
+        """
+        處理武器射擊事件\n
+        
+        參數:\n
+        screen_pos (tuple): 螢幕座標位置\n
+        world_x (float): 世界座標 X\n
+        world_y (float): 世界座標 Y\n
+        """
+        if not hasattr(self.player, 'weapon_manager') or not self.player.weapon_manager:
+            return
+            
+        # 獲取當前武器
+        current_weapon = self.player.weapon_manager.current_weapon
+        if not current_weapon:
+            return
+            
+        # 執行射擊
+        player_pos = (self.player.x, self.player.y)
+        target_pos = (world_x, world_y)
+        
+        shoot_result = current_weapon.shoot(target_pos, player_pos)
+        
+        if shoot_result['success']:
+            print(f"使用 {current_weapon.name} 射擊！")
+            
+            # 如果命中，檢查是否擊中動物
+            if shoot_result['hit']:
+                # 調用野生動物管理器處理射擊
+                animal_result = self.wildlife_manager.handle_player_shoot(
+                    player_pos, 
+                    target_pos, 
+                    shoot_result['damage'], 
+                    current_weapon.range
+                )
+                
+                if animal_result['hit_animal']:
+                    animal = animal_result['hit_animal']
+                    damage = animal_result['damage_dealt']
+                    is_kill = animal_result['kill']
+                    
+                    if is_kill:
+                        print(f"擊殺了 {animal.animal_type.value}！獲得經驗值和金錢。")
+                        # 這裡可以添加獎勵邏輯
+                    else:
+                        print(f"擊中了 {animal.animal_type.value}，造成 {damage} 點傷害！")
+                else:
+                    print("射擊命中但沒有擊中任何動物")
+            else:
+                print("射擊脫靶！")
+        else:
+            print("無法射擊（可能需要重新裝彈）")
+    
+    def _setup_combat_system(self):
+        """
+        設置戰鬥系統，包括玩家受攻擊回調\n
+        """
+        # 設置動物攻擊玩家的回調
+        def handle_animal_attack(damage, source_animal):
+            """處理動物攻擊玩家的回調"""
+            if self.player.take_damage(damage, source_animal):
+                print(f"玩家被 {source_animal.animal_type.value} 攻擊，受到 {damage} 點傷害！")
+                
+                # 檢查玩家是否死亡
+                if not self.player.is_alive:
+                    print("玩家已死亡，正在傳送到醫院...")
+        
+        # 設置野生動物管理器的攻擊回調
+        if hasattr(self, 'wildlife_manager'):
+            self.wildlife_manager.set_player_attack_callback(handle_animal_attack)

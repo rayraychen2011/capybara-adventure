@@ -85,6 +85,9 @@ class Animal:
         self.max_health = AnimalData.get_animal_property(animal_type, "health") or 50
         self.health = self.max_health
 
+        # 水陸移動能力
+        self.can_swim = AnimalData.get_animal_property(animal_type, "can_swim") or False
+
         # 行為屬性
         self.threat_level = AnimalData.get_animal_property(animal_type, "threat_level")
         self.behavior_type = AnimalData.get_animal_property(animal_type, "behavior")
@@ -92,6 +95,21 @@ class Animal:
         self.is_protected = (
             AnimalData.get_animal_property(animal_type, "is_protected") or False
         )
+
+        # 戰鬥屬性
+        self.damage = AnimalData.get_animal_property(animal_type, "damage") or 0
+        self.agility = AnimalData.get_animal_property(animal_type, "agility") or 50
+        self.attack_range = AnimalData.get_animal_property(animal_type, "attack_range") or 0
+        self.territory_range = AnimalData.get_animal_property(animal_type, "territory_range") or 0
+        self.flee_speed = AnimalData.get_animal_property(animal_type, "flee_speed") or self.max_speed
+        
+        # 戰鬥狀態
+        self.is_injured = False
+        self.last_attack_time = 0
+        self.attack_cooldown = 1.0  # 攻擊冷卻時間（秒）
+        self.has_attacked_player = False
+        self.player_target = None  # 攻擊目標
+        self.flee_target = None   # 逃跑目標位置
 
         # 外觀
         self.color = AnimalData.get_animal_property(animal_type, "color") or (
@@ -114,11 +132,12 @@ class Animal:
         # 攻擊系統 - 根據需求設定
         self.attack_range = 1.5 * 20  # 攻擊距離（1.5公尺 = 30像素）
 
-        # 傳奇動物領地系統
-        self.has_territory = (self.rarity == RarityLevel.LEGENDARY)
-        if self.has_territory:
-            # 領地範圍（以動物為中心的圓形區域）
-            self.territory_radius = 150  # 像素
+        # 熊的領地系統
+        self.territory_radius = AnimalData.get_animal_property(animal_type, "territory_radius") or 0
+        self.has_territory = self.territory_radius > 0  # 有領地半徑就表示有領地
+        if self.territory_radius > 0:
+            # 將公尺轉換為像素（假設1公尺=20像素）
+            self.territory_radius = self.territory_radius * 20
             self.territory_center = (self.x, self.y)
             self.territory_invasion_timer = 0  # 玩家入侵領地計時器
             self.territory_warning_given = False  # 是否已給出警告
@@ -330,28 +349,20 @@ class Animal:
             (player_position[1] - self.territory_center[1]) ** 2
         )
         
-        if territory_distance <= self.territory_radius:
-            # 玩家在領地內
-            self.territory_invasion_timer += dt
-            
-            if not self.territory_warning_given and self.territory_invasion_timer >= 1.0:
-                # 入侵1秒後給出警告
-                self.state = AnimalState.ROARING
-                self.roar_timer = 2.0  # 怒吼2秒
-                self.territory_warning_given = True
-                print(f"{self.animal_type.value} 發出威脅性的怒吼！")
-                # TODO: 播放怒吼音效
-                
-            elif self.territory_invasion_timer >= 10.0:
-                # 入侵10秒後攻擊
+        if territory_distance <= self.territory_range:
+            # 根據新需求：傳奇動物看到玩家進入領地便立即攻擊
+            if self.state not in [AnimalState.ATTACKING]:
                 self.state = AnimalState.ATTACKING
-                print(f"{self.animal_type.value} 開始攻擊入侵者！")
+                print(f"{self.animal_type.value} 看到玩家進入領地，立即發動攻擊！")
         else:
-            # 玩家離開領地，重置計時器
+            # 玩家離開領地，停止攻擊
+            if self.state == AnimalState.ATTACKING:
+                self.state = AnimalState.WANDERING
+                print(f"{self.animal_type.value} 停止攻擊，玩家已離開領地")
+            
+            # 重置領地狀態
             self.territory_invasion_timer = 0
             self.territory_warning_given = False
-            if self.state in [AnimalState.ROARING, AnimalState.ATTACKING]:
-                self.state = AnimalState.WANDERING
 
     def _update_behavior_state(self, dt, player_position, player_distance):
         """
@@ -537,46 +548,27 @@ class Animal:
         dt (float): 時間間隔\n
         player_position (tuple): 玩家位置\n
         """
-        self.current_speed = self.max_speed * 1.1  # 稍微加速
+        # 根據敏捷度調整移動速度
+        agility_factor = self.agility / 50.0  # 標準化敏捷度 (50為中等)
+        self.current_speed = self.max_speed * (0.8 + agility_factor * 0.4)  # 敏捷度影響速度
 
         # 持續追蹤玩家
         self.target_x, self.target_y = player_position
 
         # 檢查是否接近到可以攻擊的距離
         distance = self._calculate_distance_to_player(player_position)
-        if distance < 25:  # 接近攻擊範圍
-            # 攻擊冷卻檢查
-            current_time = pygame.time.get_ticks() / 1000.0
-            if not hasattr(self, 'last_attack_time'):
-                self.last_attack_time = 0
-            
-            if current_time - self.last_attack_time >= 2.0:  # 2秒攻擊冷卻
-                # 根據威脅等級計算傷害
-                if self.threat_level == ThreatLevel.HARMLESS:
-                    damage = 10
-                elif self.threat_level == ThreatLevel.LOW:
-                    damage = 20
-                elif self.threat_level == ThreatLevel.MEDIUM:
-                    damage = 40
-                elif self.threat_level == ThreatLevel.HIGH:
-                    damage = 80
-                elif self.threat_level == ThreatLevel.EXTREME:
-                    damage = 120
-                else:
-                    damage = 30  # 預設傷害
-                
-                # 執行攻擊 - 需要從外部傳入玩家實例
-                print(f"{self.animal_type.value} 攻擊了玩家！造成 {damage} 點傷害")
-                self.last_attack_time = current_time
-                
-                # 標記有攻擊發生，供外部系統處理
-                self.has_attacked_player = True
-                self.attack_damage = damage
+        if distance <= self.attack_range and self.damage > 0:
+            # 嘗試攻擊玩家
+            if self.attack_player(player_position):
+                print(f"{self.animal_type.value} 攻擊了玩家！造成 {self.damage} 點傷害")
 
             # 攻擊後可能退開一些
             if random.random() < 0.3:  # 30% 機率攻擊後退開
                 self.state = AnimalState.ALERT
                 self.alert_timer = 2.0
+        elif distance > self.territory_range * 2:
+            # 如果玩家距離太遠，停止攻擊
+            self.state = AnimalState.WANDERING
 
     def _hiding_behavior(self, dt):
         """
@@ -700,6 +692,50 @@ class Animal:
                 hx, hy, hw, hh = self.habitat_bounds
                 self.x = max(hx, min(hx + hw, self.x))
                 self.y = max(hy, min(hy + hh, self.y))
+
+    def _is_in_valid_habitat(self, x, y):
+        """
+        檢查位置是否在有效棲息地內\n
+        考慮動物的水陸移動能力\n
+        \n
+        參數:\n
+        x (float): X座標\n
+        y (float): Y座標\n
+        \n
+        回傳:\n
+        bool: 是否為有效位置\n
+        """
+        if not self.terrain_system:
+            return True  # 如果沒有地形系統，允許移動
+        
+        # 將像素座標轉換為地形格子座標
+        grid_x = int(x // 20)  # 假設每格20像素
+        grid_y = int(y // 20)
+        
+        # 檢查邊界
+        if (grid_x < 0 or grid_x >= self.terrain_system.map_width or 
+            grid_y < 0 or grid_y >= self.terrain_system.map_height):
+            return False
+        
+        # 獲取地形類型
+        world_x = grid_x * 20 + 10
+        world_y = grid_y * 20 + 10
+        terrain_code = self.terrain_system.get_terrain_at_world_pos(world_x, world_y)
+        
+        # 水體地形檢查（地形代碼2）
+        if terrain_code == 2:  # 水體
+            return self.can_swim  # 只有烏龜可以在水上
+        
+        # 其他地形類型的檢查
+        # 森林（代碼1）、草地（代碼0）、山丘（代碼9）等允許所有陸生動物
+        if terrain_code in [0, 1, 7, 8, 9]:  # 草地、森林、公園、農地、山丘
+            return True
+        
+        # 道路、住宅區等不適合野生動物
+        if terrain_code in [3, 4, 5, 6, 10, 11]:  # 道路、高速公路、住宅、商業、鐵軌、火車站
+            return False
+        
+        return True  # 其他情況允許移動
 
     def _update_timers(self, dt):
         """
@@ -836,15 +872,40 @@ class Animal:
         draw_x = int(self.x - offset_x)
         draw_y = int(self.y - offset_y)
         
-        # 繪製領地範圍（傳奇動物）
-        if show_territory and self.has_territory:
+        # 繪製熊的領地範圍（紅色圓圈）
+        if self.territory_radius > 0 and self.animal_type == AnimalType.BEAR:
+            territory_draw_x = int(self.territory_center[0] - offset_x)
+            territory_draw_y = int(self.territory_center[1] - offset_y)
+            
+            # 檢查領地是否在螢幕可見範圍內
+            screen_width = screen.get_width()
+            screen_height = screen.get_height()
+            if (-self.territory_radius <= territory_draw_x <= screen_width + self.territory_radius and
+                -self.territory_radius <= territory_draw_y <= screen_height + self.territory_radius):
+                
+                # 繪製紅色領地圓圈（較粗的邊框）
+                pygame.draw.circle(screen, (255, 0, 0), (territory_draw_x, territory_draw_y), 
+                                 self.territory_radius, 4)
+                
+                # 繪製半透明紅色填充（如果支援）
+                try:
+                    territory_surface = pygame.Surface((self.territory_radius * 2, self.territory_radius * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(territory_surface, (255, 0, 0, 30), 
+                                     (self.territory_radius, self.territory_radius), self.territory_radius)
+                    screen.blit(territory_surface, (territory_draw_x - self.territory_radius, 
+                                                  territory_draw_y - self.territory_radius))
+                except:
+                    pass  # 如果不支援透明度，只顯示邊框
+        
+        # 繪製領地範圍（傳奇動物，舊版相容）
+        if show_territory and hasattr(self, 'has_territory') and self.has_territory:
             territory_draw_x = int(self.territory_center[0] - offset_x)
             territory_draw_y = int(self.territory_center[1] - offset_y)
             pygame.draw.circle(
                 screen, 
                 (255, 0, 0, 50),  # 半透明紅色
                 (territory_draw_x, territory_draw_y), 
-                self.territory_radius, 
+                150,  # 舊版固定半徑
                 3
             )
         
@@ -1047,3 +1108,91 @@ class Animal:
         status = "死亡" if not self.is_alive else self.state.value
         protection = " [保育類]" if self.is_protected else ""
         return f"{self.animal_type.value} (ID: {self.id}) - {status}{protection}"
+    
+    def attack_player(self, player_position):
+        """
+        攻擊玩家\n
+        
+        參數:\n
+        player_position (tuple): 玩家位置\n
+        
+        回傳:\n
+        bool: 是否成功攻擊\n
+        """
+        if not self.is_alive or self.damage <= 0:
+            return False
+            
+        # 檢查攻擊冷卻
+        import time
+        current_time = time.time()
+        if current_time - self.last_attack_time < self.attack_cooldown:
+            return False
+            
+        # 檢查攻擊範圍
+        distance = self._calculate_distance_to_player(player_position)
+        if distance > self.attack_range:
+            return False
+            
+        # 執行攻擊
+        self.last_attack_time = current_time
+        self.has_attacked_player = True
+        print(f"{self.animal_type.value} 攻擊了玩家，造成 {self.damage} 點傷害！")
+        return True
+    
+    def _set_flee_target(self, threat_position):
+        """
+        設定逃跑目標位置（遠離威脅）\n
+        
+        參數:\n
+        threat_position (tuple): 威脅位置\n
+        """
+        if threat_position is None:
+            return
+            
+        # 計算遠離威脅的方向
+        dx = self.x - threat_position[0]
+        dy = self.y - threat_position[1]
+        
+        # 標準化方向向量
+        distance = math.sqrt(dx * dx + dy * dy)
+        if distance > 0:
+            dx /= distance
+            dy /= distance
+        else:
+            # 如果在同一位置，隨機選擇方向
+            import random
+            angle = random.uniform(0, 2 * math.pi)
+            dx = math.cos(angle)
+            dy = math.sin(angle)
+        
+        # 設定逃跑目標（距離威脅200像素）
+        flee_distance = 200
+        self.flee_target = (
+            self.x + dx * flee_distance,
+            self.y + dy * flee_distance
+        )
+        
+        # 確保逃跑目標在棲息地範圍內
+        if self.habitat_bounds:
+            hx, hy, hw, hh = self.habitat_bounds
+            self.flee_target = (
+                max(hx, min(hx + hw, self.flee_target[0])),
+                max(hy, min(hy + hh, self.flee_target[1]))
+            )
+        
+        # 更新移動目標
+        self.target_x, self.target_y = self.flee_target
+        
+        # 提高逃跑時的速度
+        self.current_speed = self.flee_speed
+        
+        print(f"{self.animal_type.value} 開始逃跑到 ({self.target_x:.1f}, {self.target_y:.1f})")
+    
+    def get_damage(self):
+        """
+        獲取動物的攻擊傷害\n
+        
+        回傳:\n
+        int: 攻擊傷害值\n
+        """
+        return self.damage

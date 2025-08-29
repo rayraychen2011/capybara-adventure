@@ -153,6 +153,52 @@ class FontManager:
         font = self.get_font(size)
         return font.render(text, antialias, color)
     
+    def render_text_with_outline(self, text, size=DEFAULT_FONT_SIZE, color=TEXT_COLOR, 
+                                outline_color=None, outline_width=2, antialias=True):
+        """
+        渲染帶邊框的文字為 Surface 物件\n
+        \n
+        參數:\n
+        text (str): 要渲染的文字內容\n
+        size (int): 字體大小，預設為 DEFAULT_FONT_SIZE\n
+        color (tuple): 文字顏色 RGB 值，預設為 TEXT_COLOR\n
+        outline_color (tuple): 邊框顏色，預設為 TEXT_OUTLINE_COLOR\n
+        outline_width (int): 邊框寬度，預設為 2\n
+        antialias (bool): 是否使用反鋸齒，預設為 True\n
+        \n
+        回傳:\n
+        pygame.Surface: 渲染完成的帶邊框文字表面\n
+        """
+        if outline_color is None:
+            outline_color = TEXT_OUTLINE_COLOR if 'TEXT_OUTLINE_COLOR' in globals() else (0, 0, 0)
+        
+        font = self.get_font(size)
+        
+        # 獲取文字尺寸
+        text_size = font.size(text)
+        surface_width = text_size[0] + outline_width * 2
+        surface_height = text_size[1] + outline_width * 2
+        
+        # 創建表面
+        surface = pygame.Surface((surface_width, surface_height), pygame.SRCALPHA)
+        
+        # 渲染邊框（在8個方向渲染邊框文字）
+        outline_offsets = [
+            (-outline_width, -outline_width), (0, -outline_width), (outline_width, -outline_width),
+            (-outline_width, 0), (outline_width, 0),
+            (-outline_width, outline_width), (0, outline_width), (outline_width, outline_width)
+        ]
+        
+        outline_surface = font.render(text, antialias, outline_color)
+        for offset_x, offset_y in outline_offsets:
+            surface.blit(outline_surface, (outline_width + offset_x, outline_width + offset_y))
+        
+        # 渲染主文字
+        main_surface = font.render(text, antialias, color)
+        surface.blit(main_surface, (outline_width, outline_width))
+        
+        return surface
+    
     def render_multiline_text(self, text_lines, size=DEFAULT_FONT_SIZE, color=TEXT_COLOR, line_spacing=5):
         """
         渲染多行文字為 Surface 物件\n

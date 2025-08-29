@@ -64,8 +64,9 @@ BACKGROUND_COLOR = (135, 206, 235)
 # 玩家角色顏色 - 橘色
 PLAYER_COLOR = (255, 165, 0)
 
-# 文字顏色 - 白色
+# 文字顏色 - 白色文字配黑色邊框
 TEXT_COLOR = (255, 255, 255)
+TEXT_OUTLINE_COLOR = (0, 0, 0)  # 文字邊框顏色
 
 # UI 背景色 - 半透明黑色
 UI_BACKGROUND_COLOR = (0, 0, 0, 128)
@@ -166,6 +167,10 @@ SCENE_HOME = "home"
 
 
 ######################遊戲系統設定######################
+# 遊戲時間設定
+GAME_DAY_DURATION_MINUTES = 12  # 遊戲一天對應現實世界分鐘數
+SECONDS_PER_REAL_SECOND = 120.0  # 現實1秒 = 遊戲2分鐘
+
 # 初始金錢數量
 INITIAL_MONEY = 500  # 根據新需求設定初始金錢為 500 元
 
@@ -185,6 +190,7 @@ MAX_RESIDENTIAL_BUILDINGS = 100  # 城鎮最多只能有 100 棟住宅
 # 蔬果園設定
 VEGETABLE_GARDEN_HARVEST_INCOME = 10  # 採摘 1 格蔬果園可獲得 10 元
 VEGETABLE_GARDEN_DAILY_GROWTH = True  # 蔬果園每天成熟一次
+VEGETABLE_GARDEN_REGROW_TIME = GAME_DAY_DURATION_MINUTES * 60  # 蔬果成熟時間（遊戲一天 = 12分鐘）
 
 # 服裝店設定
 CLOTHING_STORE_OUTFIT_COUNT = 5  # 服裝店提供 5 套套裝

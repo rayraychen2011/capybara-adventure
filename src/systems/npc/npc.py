@@ -100,9 +100,13 @@ class NPC:
         self.color = ProfessionData.get_profession_color(profession)
         self.size = 3  # NPC 顯示大小（縮小以配合玩家尺寸）
 
-        # 對話系統
-        self.dialogue_lines = self._generate_dialogue()
+        # 對話系統（性格系統會重新生成這些對話）
+        self.dialogue_lines = ["你好。"]  # 預設對話，等待性格系統更新
         self.last_interaction_time = 0
+        
+        # 性格系統相關屬性
+        self.personality_type = None  # 性格類型，由性格系統設定
+        self.personality_profile = None  # 完整的性格檔案
 
         # 特殊屬性
         self.assigned_area = None  # 電力工人的負責區域
@@ -123,117 +127,13 @@ class NPC:
 
     def _generate_name(self):
         """
-        生成隨機的 NPC 姓名\n
-        \n
-        使用繁體中文常見姓氏和名字組合\n
+        生成隨機的 NPC 姓名（暫時用，實際姓名由性格系統分配）\n
         \n
         回傳:\n
-        str: 生成的姓名\n
+        str: 臨時姓名\n
         """
-        # 常見姓氏
-        surnames = [
-            "王",
-            "李",
-            "張",
-            "劉",
-            "陳",
-            "楊",
-            "趙",
-            "黃",
-            "周",
-            "吳",
-            "徐",
-            "孫",
-            "胡",
-            "朱",
-            "高",
-            "林",
-            "何",
-            "郭",
-            "馬",
-            "羅",
-            "梁",
-            "宋",
-            "鄭",
-            "謝",
-            "韓",
-            "唐",
-            "馮",
-            "于",
-            "董",
-            "蕭",
-        ]
-
-        # 常見名字 (單字)
-        given_names_male = [
-            "偉",
-            "明",
-            "強",
-            "軍",
-            "峰",
-            "勇",
-            "波",
-            "輝",
-            "剛",
-            "健",
-            "華",
-            "超",
-            "建",
-            "文",
-            "亮",
-            "志",
-            "宇",
-            "鵬",
-            "瑞",
-            "龍",
-        ]
-
-        given_names_female = [
-            "麗",
-            "娜",
-            "靜",
-            "敏",
-            "雯",
-            "蓉",
-            "萍",
-            "婷",
-            "秀",
-            "芳",
-            "玲",
-            "欣",
-            "慧",
-            "晶",
-            "琪",
-            "薇",
-            "瑤",
-            "嘉",
-            "純",
-            "美",
-        ]
-
-        # 隨機選擇性別
-        is_male = random.choice([True, False])
-
-        surname = random.choice(surnames)
-
-        if is_male:
-            # 男性名字可能是單字或雙字
-            if random.random() < 0.3:  # 30% 機率是單字名
-                given_name = random.choice(given_names_male)
-            else:  # 70% 機率是雙字名
-                given_name = random.choice(given_names_male) + random.choice(
-                    given_names_male
-                )
-        else:
-            # 女性名字生成邏輯類似
-            if random.random() < 0.3:
-                given_name = random.choice(given_names_female)
-            else:
-                given_name = random.choice(given_names_female) + random.choice(
-                    given_names_female
-                )
-
-        return surname + given_name
+        # 這個方法將被性格系統覆蓋，只是提供臨時名稱
+        return f"居民{self.id}"
 
     def _generate_dialogue(self):
         """
@@ -1192,14 +1092,24 @@ class NPC:
 
             print(f"{self.name} 因為 {cause} 而受傷住院")
 
-    def get_dialogue(self):
+    def get_dialogue(self, interaction_type="daily"):
         """
-        獲取隨機對話內容\n
+        獲取根據性格定制的對話內容\n
+        \n
+        參數:\n
+        interaction_type (str): 互動類型 ("greeting", "daily", "profession")\n
         \n
         回傳:\n
         str: 對話內容\n
         """
-        return random.choice(self.dialogue_lines)
+        # 如果有性格檔案，使用性格化對話
+        if hasattr(self, 'personality_profile') and self.personality_profile:
+            # 這裡應該由NPC管理器的性格系統處理
+            # 暫時返回隨機對話
+            return random.choice(self.dialogue_lines)
+        else:
+            # 備用方案：返回基本對話
+            return random.choice(self.dialogue_lines)
 
     def set_workplace(self, workplace_position):
         """

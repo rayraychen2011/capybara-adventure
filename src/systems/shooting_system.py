@@ -14,7 +14,7 @@ class Bullet:
     包含飛行軌跡、碰撞檢測和視覺效果\n
     """
 
-    def __init__(self, start_pos, target_pos, damage=25, speed=800):
+    def __init__(self, start_pos, target_pos, damage=25, speed=300):
         """
         初始化子彈\n
         \n
@@ -22,7 +22,7 @@ class Bullet:
         start_pos (tuple): 起始位置 (x, y)\n
         target_pos (tuple): 目標位置 (x, y)\n
         damage (int): 傷害值\n
-        speed (float): 飛行速度（像素/秒）\n
+        speed (float): 飛行速度（像素/秒）- 調整為較慢的速度\n
         """
         self.x, self.y = start_pos
         self.damage = damage
@@ -45,10 +45,14 @@ class Bullet:
         self.life_time = 0
         self.max_life_time = 3.0  # 最大存在時間 (秒)
 
-        # 視覺效果
-        self.radius = 3
-        self.color = (255, 255, 0)  # 黃色子彈
+        # 視覺效果（BB槍專用增強特效）
+        self.radius = 6  # 增大子彈半徑讓子彈更明顯
+        self.color = (255, 255, 100)  # 亮黃色子彈
         self.trail_positions = []   # 拖尾軌跡
+        
+        # BB槍特效屬性
+        self.glow_intensity = 1.0  # 光暈強度
+        self.sparkle_timer = 0  # 閃爍計時器
 
     def update(self, dt):
         """
@@ -60,9 +64,9 @@ class Bullet:
         if not self.is_active:
             return
 
-        # 記錄軌跡位置
+        # 記錄軌跡位置（增加拖尾長度讓子彈更明顯）
         self.trail_positions.append((self.x, self.y))
-        if len(self.trail_positions) > 5:  # 只保留最近5個位置
+        if len(self.trail_positions) > 12:  # 更長的拖尾
             self.trail_positions.pop(0)
 
         # 更新位置
@@ -71,6 +75,12 @@ class Bullet:
 
         # 更新生命時間
         self.life_time += dt
+        
+        # 更新特效
+        self.sparkle_timer += dt
+        
+        # 光暈強度隨時間變化（閃爍效果）
+        self.glow_intensity = 0.8 + 0.4 * math.sin(self.sparkle_timer * 15)
 
         # 檢查生命週期
         if self.life_time >= self.max_life_time:
@@ -105,7 +115,7 @@ class Bullet:
 
     def draw(self, screen, camera_offset=(0, 0)):
         """
-        繪製子彈\n
+        繪製子彈（簡化版）\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -117,21 +127,15 @@ class Bullet:
         # 計算螢幕位置
         screen_x = int(self.x - camera_offset[0])
         screen_y = int(self.y - camera_offset[1])
+        
+        # 檢查子彈是否在螢幕範圍內
+        if (screen_x < -10 or screen_x > SCREEN_WIDTH + 10 or 
+            screen_y < -10 or screen_y > SCREEN_HEIGHT + 10):
+            return  # 不在螢幕範圍內，不繪製
 
-        # 繪製拖尾效果
-        for i, (trail_x, trail_y) in enumerate(self.trail_positions):
-            trail_screen_x = int(trail_x - camera_offset[0])
-            trail_screen_y = int(trail_y - camera_offset[1])
-            
-            # 拖尾透明度遞減
-            alpha = int(255 * (i + 1) / len(self.trail_positions) * 0.5)
-            trail_surface = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(trail_surface, (*self.color, alpha), 
-                             (self.radius, self.radius), max(1, self.radius - 1))
-            screen.blit(trail_surface, (trail_screen_x - self.radius, trail_screen_y - self.radius))
-
-        # 繪製子彈本體
-        pygame.draw.circle(screen, self.color, (screen_x, screen_y), self.radius)
+        # 簡化子彈繪製 - 只繪製核心圓點
+        pygame.draw.circle(screen, (255, 255, 0), (screen_x, screen_y), 3)  # 黃色圓點
+        pygame.draw.circle(screen, (255, 255, 255), (screen_x, screen_y), 1)  # 白色中心點
         
 
 ######################射擊系統######################
@@ -149,17 +153,24 @@ class ShootingSystem:
         """
         self.bullets = []  # 活躍的子彈列表
         self.last_shot_time = 0  # 上次射擊時間
-        self.shot_cooldown = 0.2  # 射擊冷卻時間（秒）
+        
+        # 全自動射擊設定 - BB槍每秒5發（降低射速）
+        self.is_auto_firing = True  # 永遠開啟全自動模式
+        self.auto_fire_rate = 5.0  # 每秒5發子彈（降低射速）
+        self.shot_cooldown = 1.0 / self.auto_fire_rate  # 0.2秒間隔
         
         # 射擊統計
         self.shots_fired = 0
         self.hits_count = 0
         
-        print("射擊系統初始化完成")
+        # 初始化音效系統
+        self.sound_manager = ShootingSoundManager()
+        
+        print("射擊系統初始化完成（BB槍全自動模式 - 每秒5發）")
 
     def can_shoot(self, player):
         """
-        檢查是否可以射擊\n
+        檢查是否可以射擊（BB槍全自動模式）\n
         \n
         參數:\n
         player (Player): 玩家物件\n
@@ -169,11 +180,8 @@ class ShootingSystem:
         """
         current_time = time.time()
         
-        # 檢查武器是否為槍
-        if not player.can_shoot():
-            return False
-        
-        # 檢查射擊冷卻時間
+        # BB槍永遠可以射擊（假設有無限彈藥）
+        # 只檢查射速冷卻時間
         if current_time - self.last_shot_time < self.shot_cooldown:
             return False
         
@@ -196,20 +204,54 @@ class ShootingSystem:
         # 獲取玩家中心位置作為射擊起點
         start_pos = player.get_center_position()
         
-        # 創建子彈
-        bullet = Bullet(start_pos, target_pos)
+        # 創建子彈，使用玩家當前武器的傷害值
+        weapon_damage = player.get_weapon_damage()
+        bullet = Bullet(start_pos, target_pos, damage=weapon_damage)
         self.bullets.append(bullet)
+        
+        # 播放BB槍射擊音效
+        self.sound_manager.play_shot_sound("bb_gun")
         
         # 更新射擊時間和統計
         self.last_shot_time = time.time()
         self.shots_fired += 1
         
-        print(f"🔫 射擊! 目標: ({target_pos[0]:.0f}, {target_pos[1]:.0f})")
+        print(f"🔫 BB槍射擊! 目標: ({target_pos[0]:.0f}, {target_pos[1]:.0f})")
         return True
 
+    def start_auto_fire(self):
+        """
+        開始全自動射擊模式（BB槍永遠開啟）\n
+        """
+        self.is_auto_firing = True
+        print("🔥 BB槍全自動射擊模式（永遠開啟）")
+
+    def stop_auto_fire(self):
+        """
+        停止全自動射擊模式（BB槍不會停止）\n
+        """
+        # BB槍永遠保持全自動
+        self.is_auto_firing = True
+        print("⚡ BB槍全自動模式無法關閉")
+
+    def handle_auto_fire(self, player, target_pos):
+        """
+        處理全自動射擊\n
+        \n
+        參數:\n
+        player (Player): 玩家物件\n
+        target_pos (tuple): 目標位置 (x, y)（世界座標）\n
+        \n
+        回傳:\n
+        bool: 是否成功射擊\n
+        """
+        if not self.is_auto_firing:
+            return False
+            
+        return self.shoot(player, target_pos)
     def handle_mouse_shoot(self, player, mouse_pos, camera_offset=(0, 0)):
         """
-        處理滑鼠射擊\n
+        處理滑鼠射擊（BB槍全自動模式）\n
         \n
         參數:\n
         player (Player): 玩家物件\n
@@ -223,11 +265,12 @@ class ShootingSystem:
         world_x = mouse_pos[0] + camera_offset[0]
         world_y = mouse_pos[1] + camera_offset[1]
         
-        return self.shoot(player, (world_x, world_y))
+        # BB槍永遠處於全自動模式
+        return self.handle_auto_fire(player, (world_x, world_y))
 
     def update(self, dt):
         """
-        更新射擊系統\n
+        更新射擊系統（包含全自動射擊邏輯）\n
         \n
         參數:\n
         dt (float): 時間間隔\n
@@ -243,7 +286,7 @@ class ShootingSystem:
         檢查子彈碰撞\n
         \n
         參數:\n
-        targets (list): 目標列表，每個目標應該有 'rect' 和可選的 'take_damage' 方法\n
+        targets (list): 目標列表，每個目標應該有 'rect' 屬性或 'get_rect()' 方法，以及可選的 'take_damage' 方法\n
         \n
         回傳:\n
         list: 命中的目標資訊列表\n
@@ -252,7 +295,15 @@ class ShootingSystem:
 
         for bullet in self.bullets[:]:
             for target in targets:
-                if hasattr(target, "rect") and bullet.check_collision(target.rect):
+                # 獲取目標的碰撞矩形
+                target_rect = None
+                if hasattr(target, "rect"):
+                    target_rect = target.rect
+                elif hasattr(target, "get_rect"):
+                    target_rect = target.get_rect()
+                
+                # 檢查碰撞
+                if target_rect and bullet.check_collision(target_rect):
                     # 對目標造成傷害
                     if hasattr(target, "take_damage"):
                         target.take_damage(bullet.damage)
@@ -283,7 +334,7 @@ class ShootingSystem:
 
     def draw_shooting_ui(self, screen, player):
         """
-        繪製射擊相關UI\n
+        繪製射擊相關UI（包含全自動模式指示）\n
         \n
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
@@ -292,22 +343,25 @@ class ShootingSystem:
         # 顯示當前武器
         from src.utils.font_manager import get_font_manager
         font_manager = get_font_manager()
-        font = font_manager.get_font(20)
         
-        weapon_text = font.render(f"武器: {player.get_current_weapon_name()}", True, (255, 255, 255))
+        weapon_text = font_manager.render_text_with_outline("武器: 全自動BB槍", 20, TEXT_COLOR)
         screen.blit(weapon_text, (10, SCREEN_HEIGHT - 60))
+        
+        # 顯示射擊模式
+        mode_text = font_manager.render_text_with_outline("🔥 BB槍全自動射擊中（每秒5發）", 20, (255, 100, 100))
+        screen.blit(mode_text, (10, SCREEN_HEIGHT - 90))
         
         # 顯示射擊統計（調試用）
         if self.shots_fired > 0:
             accuracy = (self.hits_count / self.shots_fired) * 100
-            stats_text = font.render(f"射擊: {self.shots_fired} | 命中: {self.hits_count} | 精確度: {accuracy:.1f}%", 
-                                   True, (200, 200, 200))
+            stats_text = font_manager.render_text_with_outline(
+                f"射擊: {self.shots_fired} | 命中: {self.hits_count} | 精確度: {accuracy:.1f}%", 
+                18, TEXT_COLOR)
             screen.blit(stats_text, (10, SCREEN_HEIGHT - 40))
 
-        # 顯示準星（當裝備槍時）
-        if player.can_shoot():
-            mouse_pos = pygame.mouse.get_pos()
-            self._draw_crosshair(screen, mouse_pos)
+        # 顯示準星（BB槍永遠顯示）
+        mouse_pos = pygame.mouse.get_pos()
+        self._draw_crosshair(screen, mouse_pos)
 
     def _draw_crosshair(self, screen, mouse_pos):
         """
@@ -455,14 +509,25 @@ class ShootingSoundManager:
         for weapon_type, file_path in sound_files.items():
             try:
                 # 嘗試載入音效檔案
-                sound = pygame.mixer.Sound(file_path)
-                sound.set_volume(0.5)  # 設定音量為50%
-                self.sounds[weapon_type] = sound
-                print(f"載入音效: {weapon_type}")
-            except (pygame.error, FileNotFoundError):
-                # 如果檔案不存在，創建模擬音效
+                if weapon_type == "bb_gun":
+                    # BB槍使用實際音效文件（雖然是空文件，但會觸發創建模擬音效）
+                    try:
+                        sound = pygame.mixer.Sound(file_path)
+                        sound.set_volume(0.7)  # BB槍音量較大
+                        self.sounds[weapon_type] = sound
+                        print(f"載入BB槍音效成功: {weapon_type}")
+                    except:
+                        # 如果載入失敗，創建模擬音效
+                        self.sounds[weapon_type] = self._create_mock_sound(weapon_type)
+                        print(f"創建BB槍模擬音效: {weapon_type}")
+                else:
+                    # 其他武器直接創建模擬音效
+                    self.sounds[weapon_type] = self._create_mock_sound(weapon_type)
+                    print(f"創建模擬音效: {weapon_type}")
+            except Exception as e:
+                # 如果所有嘗試都失敗，創建模擬音效
                 self.sounds[weapon_type] = self._create_mock_sound(weapon_type)
-                print(f"創建模擬音效: {weapon_type}")
+                print(f"音效載入失敗，使用模擬音效 {weapon_type}: {e}")
 
     def _create_mock_sound(self, weapon_type):
         """
@@ -481,7 +546,7 @@ class ShootingSoundManager:
             
             # 根據武器類型設定不同的頻率
             if weapon_type == "bb_gun":
-                frequency = 800  # 較高頻率，短促音效
+                frequency = 1200  # BB槍較高頻率，短促的"噗噗"聲
             elif weapon_type == "pistol":
                 frequency = 400  # 中等頻率
             elif weapon_type == "rifle":
@@ -491,7 +556,12 @@ class ShootingSoundManager:
             else:
                 frequency = 300  # 預設頻率
 
-            # 創建音效陣列
+            # 創建音效陣列（縮短BB槍音效持續時間）
+            if weapon_type == "bb_gun":
+                duration = 0.05  # BB槍音效更短促
+            else:
+                duration = 0.1  # 其他武器音效持續時間
+            
             frames = int(duration * sample_rate)
             arr = []
             
@@ -503,11 +573,19 @@ class ShootingSoundManager:
                 arr.append([int(wave), int(wave)])  # 立體聲
 
             # 轉換為 pygame Sound 物件
-            sound_array = pygame.sndarray.array(arr)
-            sound = pygame.sndarray.make_sound(sound_array)
-            sound.set_volume(0.3)  # 模擬音效音量較小
-            
-            return sound
+            try:
+                import numpy as np
+                sound_array = np.array(arr, dtype=np.int16)
+                sound = pygame.sndarray.make_sound(sound_array)
+                sound.set_volume(0.5 if weapon_type == "bb_gun" else 0.3)
+                return sound
+            except ImportError:
+                # 如果沒有numpy，創建簡單的空音效
+                print("NumPy 未安裝，創建空音效")
+                return pygame.mixer.Sound(buffer=bytes(1024))
+            except Exception as e:
+                print(f"創建音效陣列失敗: {e}")
+                return pygame.mixer.Sound(buffer=bytes(1024))
             
         except Exception as e:
             print(f"創建模擬音效失敗: {e}")
@@ -548,30 +626,32 @@ class ShootingSoundManager:
 ######################BB槍武器類別######################
 class BBGun:
     """
-    BB槍 - 玩家預設武器\n
+    BB槍 - 玩家預設武器（全自動版本）\n
     \n
     特性：\n
     - 傷害：20\n
-    - 射速：高\n
+    - 射速：全自動，每秒20發\n
     - 彈藥：100發（無限子彈）\n
     - 換彈時間：1秒\n
+    - 射擊模式：全自動\n
     """
 
     def __init__(self):
         """
-        初始化BB槍\n
+        初始化BB槍（全自動版本）\n
         """
-        self.name = "BB槍"
+        self.name = "全自動BB槍"
         self.weapon_type = "bb_gun"
         
-        # 武器屬性
+        # 武器屬性 - 每秒5發設定
         self.damage = 20
         self.range = 250
         self.accuracy = 0.85
-        self.fire_rate = 5.0  # 高射速：每秒5發
+        self.fire_rate = 5.0  # 每秒5發子彈（降低射速）
         self.magazine_size = 100
         self.reload_time = 1.0  # 1秒換彈時間
         self.ammo_type = "BB彈"
+        self.is_automatic = True  # 標記為全自動武器
         
         # 武器狀態
         self.current_ammo = self.magazine_size
@@ -580,7 +660,7 @@ class BBGun:
         self.is_reloading = False
         self.reload_start_time = 0
         
-        print(f"創建武器: {self.name}")
+        print(f"創建武器: {self.name}（每秒10發全自動模式）")
 
     def can_shoot(self):
         """

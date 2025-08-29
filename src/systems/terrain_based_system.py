@@ -72,7 +72,7 @@ class TerrainBasedSystem:
         # 建築類型優先級 (商業區) - 依據新需求優化建築類型
         self.commercial_priority = [
             "convenience_store", "clothing_store", "gun_shop", "church", 
-            "office_building", "hospital", "park"  # 新增服裝店，移除market和street_vendor
+            "office_building", "hospital", "park", "comic_theme_store"  # 新增漫畫主題服裝店
         ]
         
         # 火車站3周圍商業區特殊配置 - 根據用戶需求設定
@@ -343,14 +343,14 @@ class TerrainBasedSystem:
         # 為一般商業區和火車站3周圍商業區分別分配建築
         general_commercial_count = len(commercial_positions) - len(station3_commercial_positions)
         station3_commercial_count = len(station3_commercial_positions)
-        
+
         print(f"火車站3周圍商業區: {station3_commercial_count} 格")
         print(f"一般商業區: {general_commercial_count} 格")
-        
-        # 根據優先級分配建築類型
-        general_assignments = self._assign_commercial_buildings(general_commercial_count * 4)
+
+        # 根據優先級分配建築類型（帶重複檢測）
+        general_assignments = self._assign_commercial_buildings_with_duplicate_check(general_commercial_count * 4)
         station3_assignments = self._assign_station3_commercial_buildings(station3_commercial_count * 4)
-        
+
         building_index = 0
         station3_building_index = 0
         commercial_count = 0
@@ -607,6 +607,87 @@ class TerrainBasedSystem:
         
         return assignments
 
+    def _assign_commercial_buildings_with_duplicate_check(self, total_slots):
+        """
+        根據優先級分配商業建築類型，帶重複檢測\n
+        新需求：同一格內相同建築時，將其中一個改為漫畫主題服裝店\n
+        \n
+        參數:\n
+        total_slots (int): 總建築位置數量\n
+        \n
+        回傳:\n
+        list: 建築類型分配列表\n
+        """
+        assignments = []
+        
+        # 根據遊戲需求分配建築數量 - 專注於住宅區附近的類型
+        building_quotas = {
+            "convenience_store": max(1, total_slots // 8),    # 便利商店
+            "clothing_store": max(1, total_slots // 10),      # 服裝店
+            "gun_shop": max(1, total_slots // 12),            # 槍械店
+            "church": max(1, total_slots // 20),              # 教堂
+            "office_building": max(1, total_slots // 6),      # 辦公大樓
+            "hospital": max(1, total_slots // 15),            # 醫院
+            "park": max(1, total_slots // 8),                 # 公園
+            "comic_theme_store": 0                            # 漫畫主題服裝店（用於重複替換）
+        }
+        
+        # 按優先級順序分配
+        for building_type in self.commercial_priority:
+            if building_type == "comic_theme_store":
+                continue  # 跳過漫畫主題服裝店，它只用於替換重複建築
+            quota = building_quotas.get(building_type, 0)
+            for _ in range(min(quota, total_slots - len(assignments))):
+                assignments.append(building_type)
+        
+        # 填充剩餘位置
+        while len(assignments) < total_slots:
+            assignments.append(random.choice(["convenience_store", "clothing_store", "office_building"]))
+        
+        # 檢測並處理重複建築（每4個建築為一組，代表一個格子）
+        assignments = self._process_duplicate_buildings_in_tiles(assignments)
+        
+        return assignments
+
+    def _process_duplicate_buildings_in_tiles(self, assignments):
+        """
+        處理同一格內的重複建築，將重複的改為漫畫主題服裝店\n
+        \n
+        參數:\n
+        assignments (list): 建築分配列表\n
+        \n
+        回傳:\n
+        list: 處理後的建築分配列表\n
+        """
+        processed_assignments = []
+        
+        # 每4個建築為一組（代表一個格子）
+        for i in range(0, len(assignments), 4):
+            tile_buildings = assignments[i:i+4]
+            
+            # 檢查這個格子內是否有重複建築
+            building_counts = {}
+            for building_type in tile_buildings:
+                building_counts[building_type] = building_counts.get(building_type, 0) + 1
+            
+            # 處理重複建築
+            processed_tile = []
+            replacement_made = False
+            
+            for building_type in tile_buildings:
+                if building_counts[building_type] > 1 and not replacement_made:
+                    # 第一個重複建築改為漫畫主題服裝店
+                    processed_tile.append("comic_theme_store")
+                    building_counts[building_type] -= 1
+                    replacement_made = True
+                    print(f"檢測到重複建築 {building_type}，將其改為漫畫主題服裝店")
+                else:
+                    processed_tile.append(building_type)
+            
+            processed_assignments.extend(processed_tile)
+        
+        return processed_assignments
+
     def _assign_station3_commercial_buildings(self, total_slots):
         """
         為火車站3周圍商業區分配建築類型\n
@@ -663,6 +744,13 @@ class TerrainBasedSystem:
             factory.name = "工廠"
             factory.color = (105, 105, 105)  # 深灰色工廠
             return factory
+        elif building_type == "comic_theme_store":
+            # 創建漫畫主題服裝店
+            comic_store = Building(building_type, position, size)
+            comic_store.name = "漫畫主題服裝店"
+            comic_store.color = (255, 20, 147)  # 深粉紅色
+            comic_store.description = "售賣動漫角色服裝和周邊商品"
+            return comic_store
         else:
             return Building(building_type, position, size)
 

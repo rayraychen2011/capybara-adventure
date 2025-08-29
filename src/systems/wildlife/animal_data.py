@@ -89,10 +89,17 @@ class AnimalData:
             "threat_level": ThreatLevel.HARMLESS,
             "color": (139, 69, 19),  # 棕色
             "habitat": ["草地", "森林"],
-            "drop_items": ["兔肉", "兔毛"],
+            "can_swim": False,  # 不能在水上
+            "drop_items": [],  # 移除掉落物品
             "market_value": 30,
             "spawn_weight": 0.3,
             "description": "生活在草地和森林區域，體型小、行動迅速、容易被忽視",
+            # 戰鬥屬性 - 稀有動物會逃跑
+            "damage": 0,           # 不攻擊
+            "agility": 80,         # 逃跑速度快
+            "attack_range": 0,     # 不攻擊
+            "territory_range": 0,  # 沒有領地概念
+            "flee_speed": 6.0,     # 逃跑時速度
         },
         AnimalType.TURTLE: {
             "size": 12,
@@ -103,10 +110,17 @@ class AnimalData:
             "threat_level": ThreatLevel.LOW,
             "color": (107, 142, 35),  # 橄欖綠
             "habitat": ["水邊", "濕地"],
-            "drop_items": ["龜肉", "龜殼"],
+            "can_swim": True,  # 唯一能在水上的動物
+            "drop_items": [],  # 移除掉落物品
             "market_value": 30,
             "spawn_weight": 0.25,
             "description": "棲息在水邊和濕地，行動緩慢但防禦力強",
+            # 戰鬥屬性 - 稀有動物會逃跑
+            "damage": 0,           # 不攻擊
+            "agility": 20,         # 逃跑速度慢
+            "attack_range": 0,     # 不攻擊
+            "territory_range": 0,  # 沒有領地概念
+            "flee_speed": 2.0,     # 逃跑時速度
         },
         AnimalType.SHEEP: {
             "size": 10,
@@ -117,10 +131,17 @@ class AnimalData:
             "threat_level": ThreatLevel.HARMLESS,
             "color": (255, 255, 255),  # 白色
             "habitat": ["農田", "丘陵"],
-            "drop_items": ["羊肉", "羊毛"],
+            "can_swim": False,  # 不能在水上
+            "drop_items": [],  # 移除掉落物品
             "market_value": 30,
             "spawn_weight": 0.35,
             "description": "出沒於農田和丘陵地帶，群居性強、容易被發現",
+            # 戰鬥屬性 - 稀有動物會逃跑
+            "damage": 0,           # 不攻擊
+            "agility": 50,         # 逃跑速度中等
+            "attack_range": 0,     # 不攻擊
+            "territory_range": 0,  # 沒有領地概念
+            "flee_speed": 4.0,     # 逃跑時速度
         },
         
         # 超稀有動物（50元）
@@ -133,10 +154,16 @@ class AnimalData:
             "threat_level": ThreatLevel.HIGH,
             "color": (160, 82, 45),  # 棕褐色
             "habitat": ["山區", "森林深處"],
-            "drop_items": ["獅肉", "獅皮"],
+            "can_swim": False,  # 不能在水上
+            "drop_items": [],  # 移除掉落物品
             "market_value": 50,
             "spawn_weight": 0.15,
             "description": "棲息在山區和森林深處，行動敏捷且具攻擊性",
+            # 戰鬥屬性
+            "damage": 50,          # 山獅傷害中
+            "agility": 60,         # 山獅敏捷中
+            "attack_range": 60,    # 攻擊範圍
+            "territory_range": 120, # 領地範圍
         },
         AnimalType.BLACK_PANTHER: {
             "size": 13,
@@ -147,10 +174,16 @@ class AnimalData:
             "threat_level": ThreatLevel.HIGH,
             "color": (25, 25, 25),  # 黑色
             "habitat": ["密林"],
-            "drop_items": ["豹肉", "豹皮"],
+            "can_swim": False,  # 不能在水上
+            "drop_items": [],  # 移除掉落物品
             "market_value": 50,
             "spawn_weight": 0.12,
             "description": "出沒於密林並於夜間活動，行動隱秘且危險",
+            # 戰鬥屬性
+            "damage": 20,          # 黑豹傷害低
+            "agility": 90,         # 黑豹敏捷高
+            "attack_range": 50,    # 攻擊範圍
+            "territory_range": 100, # 領地範圍
         },
         
         # 傳奇動物（100元）
@@ -163,10 +196,17 @@ class AnimalData:
             "threat_level": ThreatLevel.EXTREME,
             "color": (101, 67, 33),  # 深棕色
             "habitat": ["山區", "森林"],
-            "drop_items": ["熊肉", "熊皮", "熊膽"],
+            "can_swim": False,  # 不能在水上
+            "territory_radius": 20,  # 熊的領地半徑20公尺
+            "drop_items": [],  # 移除掉落物品
             "market_value": 100,
             "spawn_weight": 0.05,
             "description": "棲息於山區和森林，體型巨大且力量強大，具有高度攻擊性，玩家需謹慎接近",
+            # 戰鬥屬性
+            "damage": 90,          # 熊傷害高
+            "agility": 20,         # 熊敏捷低
+            "attack_range": 80,    # 攻擊範圍
+            "territory_range": 150, # 領地範圍 - 傳奇動物看到玩家進入領地就攻擊
         },
     }
 

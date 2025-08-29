@@ -8,12 +8,15 @@
 - **啟動檔**：`main.py`（專案慣例：直接呼叫 `main()`，不使用 `if __name__ == "__main__"`）
 - **解析度**：1024x768 (16:12)，60 FPS
 - **地圖系統**：100x100 格子地形，CSV 驅動
+- **資產管理**：圖片素材在 `assets/images/`，音樂在 `assets/music/`
+- **存檔系統**：JSON 格式存檔在 `saves/game_save.json`，支援自動檢測和載入
 
 ## 架構概覽
 
 **資料流**：CSV 地形 → TerrainBasedSystem → 自動建築配置 → NPC/Systems → 玩家互動
 **引擎層次**：`GameEngine` → `StateManager`/`SceneManager` → `Scene` → `Player`/`Systems`
 **核心 API**：`terrain_system.get_terrain_at_position(x, y)` 回傳地形代碼 (0-11)
+**狀態管理**：`GameState.MENU/PLAYING/PAUSED/INVENTORY` 等狀態機制
 
 ## 必讀檔案（依重要性）
 
@@ -33,13 +36,23 @@
 
 **玩家與互動**：
 
-- `src/player/player.py` - 玩家物理、狀態、互動系統
+- `src/player/player.py` - 玩家物理、健康系統（最大血量 1000，初始 300）、物品欄、金錢
 - `src/player/input_controller.py` - WASD/滑鼠輸入處理
-- `src/scenes/town/town_scene_refactored.py` - 主要遊戲場景
+- `src/scenes/town/town_scene_refactored.py` - 主要遊戲場景（小鎮場景重構版）
+- `src/scenes/town/town_camera_controller.py` - 攝影機跟隨玩家
+- `src/scenes/town/town_interaction_handler.py` - 互動邏輯處理
+- `src/scenes/town/town_ui_manager.py` - UI 管理
 
 **系統設定**：
 
-- `config/settings.py` - 全域常數與配置參數
+- `config/settings.py` - 全域常數與配置參數（玩家速度、建築數量等）
+- `config/cupertino_map_edited.csv` - 實際使用的地形地圖
+- `config/terrain_codes.md` - 地形編碼（0-11）對照表
+
+**UI 和工具**：
+
+- `src/utils/*.py` - 豐富的 UI 系統（小地圖、手機、武器輪盤、裝備輪盤等）
+- `src/utils/font_manager.py` - 繁體中文字體支援
 
 ## 專案慣例（重要）
 
@@ -49,6 +62,7 @@
 - **主程式執行**：不使用 `if __name__ == "__main__":` 慣例，直接呼叫 `main()`。
 - **時間系統**：週末（Sat/Sun）為工作日（`src/systems/time_system.py`）。
 - **畫面解析度**：`SCREEN_WIDTH=1024`, `SCREEN_HEIGHT=768`（`config/settings.py`）。
+- **存檔載入**：遊戲啟動時自動檢測 `saves/game_save.json` 並優先載入既有存檔。
 
 ## 架構關鍵原則
 
@@ -63,6 +77,8 @@
 - **修改地形或區域行為**：先在 `config/cupertino_map_edited.csv` 做小規模更動並用地形檢視或 `python main.py` 測試。
 - **新位置相關機制**：優先擴充 `terrain_based_system` / `tile_system`，避免新增場景。
 - **跨系統狀態變更**：使用 `state_manager.change_state(...)` 並註冊 callback 以避免 race condition。
+- **UI 系統開發**：優先使用 `src/utils/` 中現有的 UI 組件（手機、小地圖、武器輪盤等）作為範例。
+- **存檔系統整合**：新數據需要在 `saves/game_save.json` 中保存，參考既有欄位格式。
 
 ## 常見整合模式
 
@@ -71,6 +87,10 @@
 **新 NPC 行為**：擴充 `src/systems/npc/npc_manager.py` → 使用 `terrain_system.get_terrain_at_position()` 查詢工作地點 → 註冊到時間系統回調
 
 **場景間資料傳遞**：使用 `scene_manager.change_scene()` 配合 `player` 物件狀態，避免全域變數
+
+**系統間通信**：重要系統（time_manager、music_manager）在 GameEngine 創建後傳遞給場景，避免循環依賴
+
+**存檔資料格式**：JSON 結構包含 `timestamp`, `player_position`, `player_health`, `player_money`, `game_time`, `weather` 等核心欄位
 
 ## 可複製範例（直接貼入場景或系統）
 
@@ -102,6 +122,23 @@ def setup_residential_areas(terrain_system, tile_system):
                         cell_x = x * tile_system.tile_size + col * (tile_system.tile_size // 2)
                         cell_y = y * tile_system.tile_size + row * (tile_system.tile_size // 2)
                         tile_system.place_house((cell_x, cell_y))
+```
+
+**存檔系統整合**（在場景中調用）：
+
+```python
+def save_game_data(player, time_manager, weather_system=None):
+    """標準存檔格式，可在任何場景使用"""
+    save_data = {
+        "timestamp": datetime.now().isoformat(),
+        "player_position": [player.x, player.y],
+        "player_health": player.health,
+        "player_money": player.money,
+        "game_time": time_manager.get_formatted_time(),
+        "weather": weather_system.current_weather if weather_system else "☀️ 晴天"
+    }
+    with open("saves/game_save.json", "w", encoding="utf-8") as f:
+        json.dump(save_data, f, indent=2, ensure_ascii=False)
 ```
 
 ## 常用命令

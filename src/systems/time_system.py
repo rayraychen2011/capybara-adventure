@@ -76,7 +76,7 @@ class TimeManager:
         self.day_number = 1  # 遊戲開始第1天
 
         # 時間流逝速度設定 (現實1秒 = 遊戲中多少秒)
-        self.seconds_per_real_second = 60.0  # 現實1秒 = 遊戲1分鐘
+        self.seconds_per_real_second = SECONDS_PER_REAL_SECOND  # 使用設定檔中的常數
 
         # 時間事件回調系統
         self.time_callbacks = {}  # 時間點回調 (小時:分鐘 -> 回調函數清單)
