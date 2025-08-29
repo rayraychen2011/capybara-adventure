@@ -79,9 +79,8 @@ class GameEngine:
         # 初始化所有場景
         self._initialize_scenes()
 
-        # 設定初始場景和狀態
-        self.scene_manager.change_scene(SCENE_TOWN)  # 預設從小鎮開始
-        self.state_manager.change_state(GameState.PLAYING)  # 設定為遊戲進行狀態
+        # 檢查並載入既有存檔
+        self._check_and_load_save()
 
         print("遊戲引擎初始化完成")
 
@@ -133,6 +132,114 @@ class GameEngine:
 
         except Exception as e:
             print(f"場景初始化失敗: {e}")
+            raise
+
+    def _check_and_load_save(self):
+        """
+        檢查並載入既有存檔\n
+        \n
+        如果找到有效的存檔檔案，優先載入存檔恢復遊戲狀態\n
+        如果沒有存檔或載入失敗，使用預設設定開始新遊戲\n
+        """
+        try:
+            from src.utils.phone_ui import PhoneUI
+            
+            # 檢查是否有既有存檔
+            if PhoneUI.check_save_exists():
+                print("發現既有存檔，嘗試載入...")
+                
+                # 載入存檔資料
+                save_data = PhoneUI.load_save_data()
+                
+                if save_data:
+                    print("存檔載入成功，恢復遊戲狀態")
+                    self._apply_save_data(save_data)
+                else:
+                    print("存檔載入失敗，使用預設設定開始新遊戲")
+                    self._start_new_game()
+            else:
+                print("沒有找到既有存檔，開始新遊戲")
+                self._start_new_game()
+                
+        except Exception as e:
+            print(f"載入存檔過程發生錯誤: {e}")
+            print("使用預設設定開始新遊戲")
+            self._start_new_game()
+
+    def _apply_save_data(self, save_data):
+        """
+        應用存檔資料到遊戲狀態\n
+        \n
+        參數:\n
+        save_data (dict): 從存檔檔案載入的資料\n
+        """
+        try:
+            # 設定小鎮場景
+            self.scene_manager.change_scene(SCENE_TOWN)
+            
+            # 獲取玩家實例
+            player = self.current_player
+            if player:
+                # 恢復玩家位置
+                player_pos = save_data.get('player_position', [0, 0])
+                if isinstance(player_pos, list) and len(player_pos) >= 2:
+                    player.x = float(player_pos[0])
+                    player.y = float(player_pos[1])
+                    print(f"玩家位置已恢復至: ({player.x}, {player.y})")
+                
+                # 恢復玩家血量
+                player_health = save_data.get('player_health', 100)
+                if hasattr(player, 'health'):
+                    player.health = int(player_health)
+                    print(f"玩家血量已恢復至: {player.health}")
+                
+                # 恢復玩家金錢
+                player_money = save_data.get('player_money', 500)
+                if hasattr(player, 'money'):
+                    player.money = int(player_money)
+                    print(f"玩家金錢已恢復至: {player.money}")
+            
+            # 恢復遊戲時間
+            game_time = save_data.get('game_time', '12:00')
+            if self.time_manager and isinstance(game_time, str):
+                try:
+                    if ':' in game_time:
+                        hour, minute = map(int, game_time.split(':'))
+                        self.time_manager.hour = hour
+                        self.time_manager.minute = minute
+                        self.time_manager.second = 0
+                        print(f"遊戲時間已恢復至: {game_time}")
+                except (ValueError, IndexError) as e:
+                    print(f"時間恢復失敗: {e}")
+            
+            # 恢復天氣（如果小鎮場景有 phone_ui）
+            weather = save_data.get('weather', '☀️ 晴朗')
+            town_scene = self.scene_manager.get_scene(SCENE_TOWN)
+            if town_scene and hasattr(town_scene, 'phone_ui'):
+                town_scene.phone_ui.current_weather = weather
+                town_scene.phone_ui.current_save_data = save_data
+                print(f"天氣已恢復至: {weather}")
+            
+            # 設定遊戲狀態為進行中
+            self.state_manager.change_state(GameState.PLAYING)
+            
+        except Exception as e:
+            print(f"應用存檔資料時發生錯誤: {e}")
+            # 如果應用存檔失敗，退回到新遊戲
+            self._start_new_game()
+
+    def _start_new_game(self):
+        """
+        開始新遊戲（使用預設設定）\n
+        """
+        try:
+            # 設定初始場景和狀態
+            self.scene_manager.change_scene(SCENE_TOWN)  # 預設從小鎮開始
+            self.state_manager.change_state(GameState.PLAYING)  # 設定為遊戲進行狀態
+            print("新遊戲已開始")
+            
+        except Exception as e:
+            print(f"開始新遊戲時發生錯誤: {e}")
             raise
 
     def _handle_state_change(self, old_state, new_state):

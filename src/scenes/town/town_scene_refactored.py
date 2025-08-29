@@ -633,7 +633,7 @@ class TownScene(Scene):
                 return True
                 
             # 優先處理手機UI點擊
-            if self.phone_ui.handle_click(event.pos):
+            if self.phone_ui.handle_click(event.pos, self.player, self.time_manager):
                 return True
                 
             if event.button == 1:  # 左鍵點擊 - NPC對話、射擊或其他互動

@@ -100,12 +100,14 @@ class PhoneUI:
         # 可以在這裡添加動畫效果或其他更新邏輯
         pass
 
-    def handle_click(self, mouse_pos):
+    def handle_click(self, mouse_pos, player=None, time_manager=None):
         """
         處理滑鼠點擊事件\n
         \n
         參數:\n
         mouse_pos (tuple): 滑鼠位置\n
+        player: 玩家物件（可選）\n
+        time_manager: 時間管理器（可選）\n
         \n
         回傳:\n
         bool: 是否有處理點擊\n
@@ -138,7 +140,7 @@ class PhoneUI:
             
             if save_button_rect.collidepoint(mouse_pos):
                 try:
-                    self.save_game()
+                    self.save_game(player, time_manager)
                 except Exception as e:
                     print(f"存檔按鈕處理失敗: {e}")
                 return True
@@ -183,18 +185,60 @@ class PhoneUI:
             self.is_visible = False
             return True
 
-    def save_game(self):
+    def save_game(self, player=None, time_manager=None):
         """
         保存遊戲狀態\n
+        \n
+        參數:\n
+        player: 玩家物件（可選）\n
+        time_manager: 時間管理器（可選）\n
         """
         try:
-            # 這裡需要從遊戲場景獲取玩家位置和其他狀態
+            # 收集實際的遊戲資料
+            player_position = [0, 0]
+            player_health = 100
+            player_money = 500
+            game_time = "12:00"
+            
+            # 如果有提供玩家資料，使用實際資料
+            if player:
+                try:
+                    # 獲取玩家位置
+                    if hasattr(player, 'x') and hasattr(player, 'y'):
+                        player_position = [float(player.x), float(player.y)]
+                    elif hasattr(player, 'position'):
+                        pos = player.position
+                        if isinstance(pos, (list, tuple)) and len(pos) >= 2:
+                            player_position = [float(pos[0]), float(pos[1])]
+                    
+                    # 獲取玩家血量
+                    if hasattr(player, 'health'):
+                        player_health = int(player.health)
+                    
+                    # 獲取玩家金錢
+                    if hasattr(player, 'money'):
+                        player_money = int(player.money)
+                        
+                    print(f"已收集玩家資料: 位置={player_position}, 血量={player_health}, 金錢={player_money}")
+                    
+                except Exception as e:
+                    print(f"收集玩家資料時發生錯誤: {e}")
+            
+            # 如果有提供時間管理器，使用實際時間
+            if time_manager:
+                try:
+                    game_time = time_manager.get_time_string()
+                    print(f"已收集時間資料: {game_time}")
+                except Exception as e:
+                    print(f"收集時間資料時發生錯誤: {e}")
+            
+            # 建立存檔資料
             save_data = {
                 "timestamp": datetime.now().isoformat(),
-                "player_position": [0, 0],  # 需要從實際玩家獲取
-                "player_health": 100,       # 需要從實際玩家獲取
-                "player_money": 500,        # 需要從實際玩家獲取
-                "game_time": "12:00",       # 需要從時間管理器獲取
+                "player_position": player_position,
+                "player_health": player_health,
+                "player_money": player_money,
+                "game_time": game_time,
                 "weather": self.current_weather
             }
             
@@ -216,6 +260,7 @@ class PhoneUI:
             
             self.current_save_data = save_data
             print(f"遊戲已保存到 {self.save_file}")
+            print(f"存檔內容: {save_data}")
             
         except (OSError, IOError) as e:
             print(f"檔案操作失敗: {e}")
@@ -234,6 +279,9 @@ class PhoneUI:
     def load_game(self):
         """
         讀取遊戲狀態\n
+        \n
+        回傳:\n
+        dict: 載入的存檔資料，如果載入失敗則回傳 None\n
         """
         try:
             if os.path.exists(self.save_file):
@@ -245,7 +293,7 @@ class PhoneUI:
                 for field in required_fields:
                     if field not in save_data:
                         print(f"存檔檔案缺少必要欄位: {field}")
-                        return
+                        return None
                 
                 self.current_save_data = save_data
                 self.current_weather = save_data.get("weather", "☀️ 晴朗")
@@ -253,18 +301,21 @@ class PhoneUI:
                 print(f"遊戲已從 {self.save_file} 讀取")
                 print(f"存檔時間: {save_data.get('timestamp', '未知')}")
                 
-                # 這裡需要實際應用讀取的數據到遊戲狀態
-                # 比如設定玩家位置、血量、金錢等
+                return save_data
                 
             else:
                 print("沒有找到存檔檔案")
+                return None
                 
         except (OSError, IOError) as e:
             print(f"檔案讀取失敗: {e}")
+            return None
         except json.JSONDecodeError as e:
             print(f"存檔檔案格式錯誤: {e}")
+            return None
         except Exception as e:
             print(f"讀取遊戲失敗: {e}")
+            return None
 
     def change_weather(self):
         """
@@ -469,6 +520,81 @@ class PhoneUI:
         """
         # 這個方法用於從外部設定玩家資料
         pass
+
+    @staticmethod
+    def check_save_exists():
+        """
+        檢查是否存在存檔檔案\n
+        \n
+        回傳:\n
+        bool: 如果存檔檔案存在且有效則回傳 True\n
+        """
+        try:
+            # 建立存檔路徑
+            save_dir = os.path.join(os.getcwd(), "saves")
+            save_file = os.path.join(save_dir, "game_save.json")
+            
+            if os.path.exists(save_file):
+                # 嘗試讀取並驗證存檔格式
+                with open(save_file, 'r', encoding='utf-8') as f:
+                    save_data = json.load(f)
+                
+                # 檢查基本欄位是否存在
+                required_fields = ['timestamp', 'weather']
+                for field in required_fields:
+                    if field not in save_data:
+                        print(f"存檔檔案缺少必要欄位: {field}")
+                        return False
+                
+                return True
+            
+            return False
+            
+        except (OSError, IOError, json.JSONDecodeError) as e:
+            print(f"檢查存檔檔案時發生錯誤: {e}")
+            return False
+        except Exception as e:
+            print(f"檢查存檔時發生未知錯誤: {e}")
+            return False
+
+    @staticmethod
+    def load_save_data():
+        """
+        載入存檔資料（靜態方法，用於遊戲啟動時載入）\n
+        \n
+        回傳:\n
+        dict: 載入的存檔資料，如果載入失敗則回傳 None\n
+        """
+        try:
+            # 建立存檔路徑
+            save_dir = os.path.join(os.getcwd(), "saves")
+            save_file = os.path.join(save_dir, "game_save.json")
+            
+            if os.path.exists(save_file):
+                with open(save_file, 'r', encoding='utf-8') as f:
+                    save_data = json.load(f)
+                
+                # 驗證存檔數據的完整性
+                required_fields = ['timestamp', 'weather']
+                for field in required_fields:
+                    if field not in save_data:
+                        print(f"存檔檔案缺少必要欄位: {field}")
+                        return None
+                
+                print(f"成功載入存檔，存檔時間: {save_data.get('timestamp', '未知')}")
+                return save_data
+            
+            return None
+            
+        except (OSError, IOError) as e:
+            print(f"檔案讀取失敗: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            print(f"存檔檔案格式錯誤: {e}")
+            return None
+        except Exception as e:
+            print(f"載入存檔失敗: {e}")
+            return None
 
     def get_save_data(self):
         """

@@ -1,11 +1,11 @@
 {
-  "timestamp": "2025-08-29T09:58:18.038710",
+  "timestamp": "2025-08-29T10:06:11.381682",
   "player_position": [
-    0,
-    0
+    1706.1999999999991,
+    2547.0
   ],
-  "player_health": 100,
+  "player_health": 300,
   "player_money": 500,
-  "game_time": "12:00",
-  "weather": "⛅ 多雲"
+  "game_time": "08:06",
+  "weather": "☀️ 晴朗"
 }
