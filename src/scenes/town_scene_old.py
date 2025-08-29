@@ -1557,7 +1557,9 @@ class TownScene(Scene):
         screen.blit(npc_text, (10, 60))
 
         # 顯示電力系統狀態
-        font = pygame.font.Font(None, 20)
+        from src.utils.font_manager import get_font_manager
+        font_manager = get_font_manager()
+        font = font_manager.get_font(20)
         self.npc_manager.draw_power_grid_status(screen, font)
 
         # 繪製物品欄（畫面底下）

@@ -555,6 +555,10 @@ class ResidentialHouse(Building):
         """
         super().__init__(building_type, position, size)
         
+        # 字體管理器
+        from src.utils.font_manager import get_font_manager
+        self.font_manager = get_font_manager()
+        
         # 住宅特殊屬性
         self.residents = []  # 居民列表
         self.max_residents = 3  # 最多3個居民
@@ -784,8 +788,7 @@ class ResidentialHouse(Building):
             screen.blit(text, text_rect)
         else:
             # 一般住宅顯示居民數量
-            font = pygame.font.Font(None, 20)
-            text = font.render(f"{len(self.residents)}", True, (255, 255, 255))
+            text = self.font_manager.render_text(f"{len(self.residents)}", 20, (255, 255, 255))
             text_rect = text.get_rect(center=screen_rect.center)
             screen.blit(text, text_rect)
 

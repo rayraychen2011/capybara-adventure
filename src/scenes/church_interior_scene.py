@@ -287,8 +287,7 @@ class ChurchInteriorScene(Scene):
         
         # 出口提示
         if self.show_exit_hint:
-            font = pygame.font.Font(None, 18)
-            hint_text = font.render("按ESC或點擊離開教堂", True, (255, 255, 0))
+            hint_text = self.font_manager.render_text("按ESC或點擊離開教堂", 18, (255, 255, 0))
             hint_rect = hint_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT - 20))
             screen.blit(hint_text, hint_rect)
 

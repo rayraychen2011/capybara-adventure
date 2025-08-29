@@ -217,8 +217,9 @@ class Furniture:
         
         # 繪製家具名稱（如果家具夠大）
         if self.width > 15 and self.height > 10:
-            font = pygame.font.Font(None, 12)
-            text = font.render(self.name, True, (255, 255, 255))
+            from src.utils.font_manager import get_font_manager
+            font_manager = get_font_manager()
+            text = font_manager.render_text(self.name, 12, (255, 255, 255))
             text_rect = text.get_rect(center=screen_rect.center)
             screen.blit(text, text_rect)
 

@@ -359,15 +359,17 @@ class GameEngine:
         # 繪製遮罩
         self.screen.blit(pause_overlay, (0, 0))
 
+        # 取得字體管理器
+        from src.utils.font_manager import get_font_manager
+        font_manager = get_font_manager()
+
         # 繪製暫停文字
-        font = pygame.font.Font(None, 72)
-        pause_text = font.render("遊戲暫停", True, TEXT_COLOR)
+        pause_text = font_manager.render_text("遊戲暫停", 72, TEXT_COLOR)
         pause_rect = pause_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
         self.screen.blit(pause_text, pause_rect)
 
         # 繪製提示文字
-        font_small = pygame.font.Font(None, 36)
-        hint_text = font_small.render("按 ESC 繼續遊戲", True, TEXT_COLOR)
+        hint_text = font_manager.render_text("按 ESC 繼續遊戲", 36, TEXT_COLOR)
         hint_rect = hint_text.get_rect(
             center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 100)
         )

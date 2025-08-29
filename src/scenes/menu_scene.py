@@ -120,8 +120,7 @@ class MenuScene(Scene):
         參數:\n
         screen (pygame.Surface): 繪製目標表面\n
         """
-        version_font = pygame.font.Font(None, 24)
-        version_text = version_font.render("版本 1.0 - 開發中", True, (200, 200, 200))
+        version_text = self.font_manager.render_text("版本 1.0 - 開發中", 24, (200, 200, 200))
         version_rect = version_text.get_rect(bottomright=(SCREEN_WIDTH - 10, SCREEN_HEIGHT - 10))
         screen.blit(version_text, version_rect)
         

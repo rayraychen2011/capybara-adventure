@@ -4,6 +4,7 @@ import random
 import math
 from config.settings import *
 from src.utils.helpers import calculate_distance
+from src.utils.font_manager import get_font_manager
 
 ######################物件類別######################
 class TrainStation:
@@ -96,13 +97,14 @@ class TrainStation:
         # 繪製火車站名稱（如果建築夠大）
         if self.width > 40 and self.height > 20:
             try:
+                font_manager = get_font_manager()
                 text_surface = font_manager.render_text(self.name, 14, (255, 255, 255))
                 text_rect = text_surface.get_rect(center=station_rect.center)
                 screen.blit(text_surface, text_rect)
             except:
                 # 字體渲染失敗時使用預設字體
-                font = pygame.font.Font(None, 14)
-                text_surface = font.render(self.name, True, (255, 255, 255))
+                font_manager = get_font_manager()
+                text_surface = font_manager.render_text(self.name, 14, (255, 255, 255))
                 text_rect = text_surface.get_rect(center=station_rect.center)
                 screen.blit(text_surface, text_rect)
 
@@ -898,10 +900,11 @@ class RailwaySystem:
                 
                 # 繪製互動提示
                 try:
+                    font_manager = get_font_manager()
                     hint_text = font_manager.render_text("按數字鍵選擇目的地", 12, (255, 255, 0))
                 except:
-                    font = pygame.font.Font(None, 12)
-                    hint_text = font.render("Press number keys", True, (255, 255, 0))
+                    font_manager = get_font_manager()
+                    hint_text = font_manager.render_text("按數字鍵選擇目的地", 12, (255, 255, 0))
                 
                 hint_rect = hint_text.get_rect(center=(screen_x + station.width//2, screen_y - 15))
                 
@@ -964,11 +967,12 @@ class RailwaySystem:
         
         # 繪製車站名稱和標題
         try:
+            font_manager = get_font_manager()
             station_name = self.selected_station.name if self.selected_station else "火車站"
             title_text = font_manager.render_text(f"{station_name} - 目的地選擇", 18, (255, 255, 255))
         except:
-            font = pygame.font.Font(None, 18)
-            title_text = font.render("Train Station - Destinations", True, (255, 255, 255))
+            font_manager = get_font_manager()
+            title_text = font_manager.render_text("火車站 - 目的地選擇", 18, (255, 255, 255))
         
         title_text_rect = title_text.get_rect(center=(screen_x + screen_width//2, screen_y + title_height//2))
         screen.blit(title_text, title_text_rect)
@@ -977,9 +981,11 @@ class RailwaySystem:
         current_time = pygame.time.get_ticks()
         if (current_time // 500) % 2:  # 每0.5秒閃爍一次
             try:
+                font_manager = get_font_manager()
                 departure_text = font_manager.render_text("● 現在發車 ●", 14, (0, 255, 0))
             except:
-                font = pygame.font.Font(None, 14)
+                font_manager = get_font_manager()
+                departure_text = font_manager.render_text("● 現在發車 ●", 14, (0, 255, 0))
                 departure_text = font.render("● NOW DEPARTING ●", True, (0, 255, 0))
             
             departure_rect = departure_text.get_rect(center=(screen_x + screen_width//2, screen_y + title_height + 15))
@@ -999,10 +1005,11 @@ class RailwaySystem:
             
             # 繪製路線編號
             try:
+                font_manager = get_font_manager()
                 number_text = font_manager.render_text(f"{i+1}", 20, (255, 255, 0))
             except:
-                font = pygame.font.Font(None, 20)
-                number_text = font.render(f"{i+1}", True, (255, 255, 0))
+                font_manager = get_font_manager()
+                number_text = font_manager.render_text(f"{i+1}", 20, (255, 255, 0))
             
             number_rect = pygame.Rect(screen_x + 25, option_y + 5, 30, 30)
             pygame.draw.rect(screen, (100, 100, 0), number_rect)
@@ -1013,20 +1020,22 @@ class RailwaySystem:
             
             # 繪製目的地名稱
             try:
+                font_manager = get_font_manager()
                 dest_text = font_manager.render_text(station.name, 16, (255, 255, 255))
             except:
-                font = pygame.font.Font(None, 16)
-                dest_text = font.render(station.name, True, (255, 255, 255))
+                font_manager = get_font_manager()
+                dest_text = font_manager.render_text(station.name, 16, (255, 255, 255))
             
             dest_text_rect = dest_text.get_rect(left=screen_x + 70, centery=option_y + 20)
             screen.blit(dest_text, dest_text_rect)
             
             # 繪製"發車中"狀態
             try:
+                font_manager = get_font_manager()
                 status_text = font_manager.render_text("發車中", 12, (0, 255, 100))
             except:
-                font = pygame.font.Font(None, 12)
-                status_text = font.render("DEPARTING", True, (0, 255, 100))
+                font_manager = get_font_manager()
+                status_text = font_manager.render_text("發車中", 12, (0, 255, 100))
             
             status_text_rect = status_text.get_rect(right=screen_x + screen_width - 25, centery=option_y + 20)
             screen.blit(status_text, status_text_rect)
@@ -1037,13 +1046,13 @@ class RailwaySystem:
         pygame.draw.rect(screen, (0, 60, 120), instruction_rect)
         
         try:
+            font_manager = get_font_manager()
             help_text = font_manager.render_text("按對應數字鍵選擇目的地", 14, (255, 255, 255))
             esc_text = font_manager.render_text("ESC: 取消", 12, (200, 200, 200))
         except:
-            font = pygame.font.Font(None, 14)
-            help_text = font.render("Press number key to select destination", True, (255, 255, 255))
-            font2 = pygame.font.Font(None, 12)
-            esc_text = font2.render("ESC: Cancel", True, (200, 200, 200))
+            font_manager = get_font_manager()
+            help_text = font_manager.render_text("按對應數字鍵選擇目的地", 14, (255, 255, 255))
+            esc_text = font_manager.render_text("ESC: 取消", 12, (200, 200, 200))
         
         help_rect = help_text.get_rect(center=(screen_x + screen_width//2, instruction_y + 15))
         screen.blit(help_text, help_rect)

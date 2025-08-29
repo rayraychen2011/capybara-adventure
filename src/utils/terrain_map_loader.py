@@ -262,8 +262,9 @@ class TerrainMapLoader:
                 font_manager = get_font_manager()
                 font = font_manager.get_font(18)
         except:
-            # 字體載入失敗，使用預設字體
-            font = pygame.font.Font(None, 18)
+            # 字體載入失敗，使用字體管理器的預設字體
+            font_manager = get_font_manager()
+            font = font_manager.get_font(18)
             
         current_y = y
         
