@@ -225,8 +225,8 @@ HEALTH_POTIONS = {
 # 槍械射程，單位為像素
 GUN_RANGE = 200
 
-# 子彈速度，單位為像素/幀
-BULLET_SPEED = 10
+# 子彈速度，單位為像素/幀 (調慢一些讓玩家更容易看見子彈飛行)
+BULLET_SPEED = 5
 
 # 初始武器設定
 INITIAL_WEAPON = "手槍"
@@ -294,7 +294,7 @@ TOTAL_TRIBE_NPCS = 0  # 刪除部落NPC（依據需求）
 # 小鎮NPC職業分配（根據農夫工作需求重新分配）
 # 每個住宅最多3個NPC（家庭成員）
 NPCS_PER_HOUSE = 3  # 每個住宅的NPC數量
-FARMER_COUNT = 50  # 農夫（50名工作在火車站1旁農地）
+FARMER_COUNT = 50  # 農夫（50名工作在農地旁農地）
 DOCTOR_COUNT = 0  # 醫生（暫停其他職業）
 NURSE_COUNT = 0  # 護士（暫停其他職業）
 GUN_SHOP_STAFF_COUNT = 0  # 槍械店員工（暫停其他職業）

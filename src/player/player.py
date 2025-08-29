@@ -142,6 +142,9 @@ class Player:
         
         # 新的武器管理器（支援槍/空手切換）
         self.weapon_manager = WeaponManager()
+        
+        # 開火控制（新增）
+        self.fire_enabled = True  # 控制是否允許左鍵開火，預設為開啟
 
         # 狀態效果
         self.status_effects = {}  # 狀態效果名稱 -> 剩餘時間
@@ -436,33 +439,20 @@ class Player:
         new_x = self.x + move_x
         new_y = self.y + move_y
 
-        # 碰撞檢測 - 檢查是否可以移動到新位置
-        if self.terrain_system:
-            # 分別檢查 X 和 Y 方向的移動，允許滑牆效果
-            can_move_x = self.terrain_system.can_move_to_position(new_x, self.y, self.rect)
-            can_move_y = self.terrain_system.can_move_to_position(self.x, new_y, self.rect)
-            
-            # 調試：碰撞檢測結果（簡化版）
-            if self._debug_counter % 180 == 0:
-                print(f"碰撞檢測 - 新位置: ({new_x:.1f}, {new_y:.1f}), 可移動X: {can_move_x}, 可移動Y: {can_move_y}")
-            
-            # 只有在不會發生碰撞時才移動
-            old_x, old_y = self.x, self.y
-            if can_move_x:
-                self.x = new_x
-            if can_move_y:
-                self.y = new_y
-                
-            # 調試：實際移動結果（簡化版）
-            if self._debug_counter % 180 == 0:
-                moved_x = self.x - old_x
-                moved_y = self.y - old_y
-                if moved_x != 0 or moved_y != 0:  # 只在實際有移動時輸出
-                    print(f"實際移動 - 移動量: ({moved_x:.3f}, {moved_y:.3f})")
-        else:
-            # 沒有地形系統時直接移動（後備方案）
-            self.x = new_x
-            self.y = new_y
+        # 碰撞檢測 - 玩家可以走在任何地方，不進行碰撞檢測
+        # 玩家現在可以自由移動到任何位置，包括水體、樹木、建築物等
+        old_x, old_y = self.x, self.y
+        
+        # 直接移動到新位置，不檢查碰撞
+        self.x = new_x
+        self.y = new_y
+        
+        # 調試：實際移動結果（簡化版）
+        if self._debug_counter % 180 == 0:
+            moved_x = self.x - old_x
+            moved_y = self.y - old_y
+            if moved_x != 0 or moved_y != 0:  # 只在實際有移動時輸出
+                print(f"實際移動 - 移動量: ({moved_x:.3f}, {moved_y:.3f})")
 
         # 更新最後安全位置（只有當玩家不在水中或建築物內時）
         if self.terrain_system:
@@ -1370,17 +1360,40 @@ class Player:
     def can_shoot(self):
         """
         檢查是否可以射擊\n
-        考慮新的武器管理器系統\n
+        考慮新的武器管理器系統和開火控制\n
         \n
         回傳:\n
         bool: 是否可以射擊\n
         """
+        # 檢查開火功能是否被啟用
+        if not self.fire_enabled:
+            return False
+            
         if hasattr(self, 'weapon_manager') and self.weapon_manager:
             current_weapon = self.weapon_manager.current_weapon
             if current_weapon and current_weapon.weapon_type in ["pistol", "rifle", "shotgun", "sniper"]:
                 return current_weapon.can_shoot()
         # 回退到原有邏輯（BB槍永遠可以射擊）
         return True
+
+    def toggle_fire_mode(self):
+        """
+        切換開火功能的開關狀態\n
+        右鍵點擊角色時會呼叫此方法\n
+        """
+        self.fire_enabled = not self.fire_enabled
+        status = "開啟" if self.fire_enabled else "關閉"
+        print(f"🔫 開火功能已{status}")
+        return self.fire_enabled
+
+    def is_fire_enabled(self):
+        """
+        檢查開火功能是否開啟\n
+        \n
+        回傳:\n
+        bool: 開火功能是否開啟\n
+        """
+        return self.fire_enabled
 
     def can_chop(self):
         """
@@ -1403,4 +1416,4 @@ class Player:
             if current_weapon:
                 return current_weapon.damage
         # 回退到BB槍的預設傷害
-        return BB_GUN_DAMAGE
+        return 15

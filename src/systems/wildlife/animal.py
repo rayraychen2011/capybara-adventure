@@ -125,8 +125,13 @@ class Animal:
             self.image = pygame.transform.scale(self.image, self.image_size)
 
         # 視野系統 - 根據需求設定
-        self.vision_angle = 120  # 視野角度（度）
-        self.vision_distance = 20 * 20  # 視野距離（20公尺 = 400像素，假設1公尺=20像素）
+        # 根據動物類型調整視野角度
+        if animal_type == AnimalType.BEAR:
+            self.vision_angle = 360  # 熊具有360度全方位視野（嗅覺敏銳）
+            self.vision_distance = 30 * 20  # 熊的視野距離更遠（30公尺 = 600像素）
+        else:
+            self.vision_angle = 120  # 一般動物視野角度（度）
+            self.vision_distance = 20 * 20  # 一般動物視野距離（20公尺 = 400像素）
         self.vision_direction = 0  # 當前面向方向（度）
 
         # 攻擊系統 - 根據需求設定
@@ -270,8 +275,13 @@ class Animal:
             pass  # 行為在 take_damage 方法中處理
         
         elif self.rarity == RarityLevel.LEGENDARY:
-            # 傳奇動物：領地行為已在 _update_territory_behavior 中處理
-            pass
+            # 傳奇動物：看到玩家就攻擊（熊的新行為）
+            if self.animal_type == AnimalType.BEAR:
+                if player_in_vision and player_distance < self.vision_distance:
+                    if self.state not in [AnimalState.ATTACKING]:
+                        self.state = AnimalState.ATTACKING
+                        print(f"{self.animal_type.value} 看到玩家，立即發動攻擊！")
+            # 領地行為仍然保留（在 _update_territory_behavior 中處理）
         
         else:
             # 舊版行為邏輯（向後相容）
@@ -350,13 +360,18 @@ class Animal:
         )
         
         if territory_distance <= self.territory_range:
-            # 根據新需求：傳奇動物看到玩家進入領地便立即攻擊
-            if self.state not in [AnimalState.ATTACKING]:
-                self.state = AnimalState.ATTACKING
-                print(f"{self.animal_type.value} 看到玩家進入領地，立即發動攻擊！")
+            # 對於熊，領地行為與視野攻擊集成，避免重複觸發
+            if self.animal_type == AnimalType.BEAR:
+                # 熊的領地攻擊已經在視野檢測中處理，這裡不重複設置
+                pass
+            else:
+                # 其他傳奇動物：看到玩家進入領地便立即攻擊
+                if self.state not in [AnimalState.ATTACKING]:
+                    self.state = AnimalState.ATTACKING
+                    print(f"{self.animal_type.value} 看到玩家進入領地，立即發動攻擊！")
         else:
-            # 玩家離開領地，停止攻擊
-            if self.state == AnimalState.ATTACKING:
+            # 玩家離開領地，對於非熊動物停止攻擊
+            if self.animal_type != AnimalType.BEAR and self.state == AnimalState.ATTACKING:
                 self.state = AnimalState.WANDERING
                 print(f"{self.animal_type.value} 停止攻擊，玩家已離開領地")
             
@@ -566,9 +581,16 @@ class Animal:
             if random.random() < 0.3:  # 30% 機率攻擊後退開
                 self.state = AnimalState.ALERT
                 self.alert_timer = 2.0
-        elif distance > self.territory_range * 2:
-            # 如果玩家距離太遠，停止攻擊
-            self.state = AnimalState.WANDERING
+        elif distance > self.vision_distance:
+            # 如果玩家距離超出視野範圍，停止攻擊
+            if self.animal_type == AnimalType.BEAR:
+                # 熊失去視野後停止攻擊
+                self.state = AnimalState.WANDERING
+                print(f"{self.animal_type.value} 失去玩家視野，停止攻擊")
+            else:
+                # 其他動物使用原來的領地邏輯
+                if distance > self.territory_range * 2:
+                    self.state = AnimalState.WANDERING
 
     def _hiding_behavior(self, dt):
         """

@@ -75,7 +75,7 @@ class TerrainBasedSystem:
             "office_building", "hospital", "park", "comic_theme_store"  # 新增漫畫主題服裝店
         ]
         
-        # 火車站3周圍商業區特殊配置 - 根據用戶需求設定
+        # 小島周圍商業區特殊配置 - 根據用戶需求設定
         self.station3_commercial_config = {
             "convenience_store": 2,  # 2個便利商店
             "factory": 0,           # 剩餘位置大部分為工廠
@@ -306,7 +306,7 @@ class TerrainBasedSystem:
         """
         設置商業區 - 地形編碼6\n
         每格放置4個商業建築，優先放置重要建築\n
-        火車站3周圍的商業區有特殊配置：2個便利商店，剩下都是工廠和2棟辦公大樓\n
+        小島周圍的商業區有特殊配置：2個便利商店，剩下都是工廠和2棟辦公大樓\n
         """
         print("設置商業區...")
         
@@ -328,23 +328,23 @@ class TerrainBasedSystem:
         building_size_x = self.tile_size // 2 - 2
         building_size_y = self.tile_size // 2 - 2
         
-        # 找到火車站3的位置（CSV第50行第70列，轉換為0索引是第49行第69列）
+        # 找到小島的位置（CSV第50行第70列，轉換為0索引是第49行第69列）
         station3_row = 49
         station3_col = 69
         
-        # 定義火車站3周圍的商業區範圍
+        # 定義小島周圍的商業區範圍
         station3_commercial_positions = []
         for grid_x, grid_y in commercial_positions:
-            # 檢查是否在火車站3附近（行49-51，列71-74範圍內）
+            # 檢查是否在小島附近（行49-51，列71-74範圍內）
             if (grid_y >= station3_row - 1 and grid_y <= station3_row + 1 and
                 grid_x >= station3_col + 2 and grid_x <= station3_col + 5):
                 station3_commercial_positions.append((grid_x, grid_y))
         
-        # 為一般商業區和火車站3周圍商業區分別分配建築
+        # 為一般商業區和小島周圍商業區分別分配建築
         general_commercial_count = len(commercial_positions) - len(station3_commercial_positions)
         station3_commercial_count = len(station3_commercial_positions)
 
-        print(f"火車站3周圍商業區: {station3_commercial_count} 格")
+        print(f"小島周圍商業區: {station3_commercial_count} 格")
         print(f"一般商業區: {general_commercial_count} 格")
 
         # 根據優先級分配建築類型（帶重複檢測）
@@ -360,7 +360,7 @@ class TerrainBasedSystem:
             tile_world_x = grid_x * self.tile_size
             tile_world_y = grid_y * self.tile_size
             
-            # 判斷是否為火車站3周圍的商業區
+            # 判斷是否為小島周圍的商業區
             is_station3_area = (grid_x, grid_y) in station3_commercial_positions
             
             # 在格子內放置4個建築 (2x2 排列)
@@ -390,7 +390,7 @@ class TerrainBasedSystem:
                     
                     if building:
                         building.terrain_grid = (grid_x, grid_y)
-                        # 為火車站3周圍的建築添加特殊標記
+                        # 為小島周圍的建築添加特殊標記
                         if is_station3_area:
                             building.station3_area = True
                         self.buildings.append(building)
@@ -398,7 +398,7 @@ class TerrainBasedSystem:
                         commercial_count += 1
         
         print(f"商業區設置完成，共創建 {commercial_count} 棟商業建築")
-        print(f"火車站3周圍商業區建築: {station3_building_index} 棟")
+        print(f"小島周圍商業區建築: {station3_building_index} 棟")
 
     def _setup_farm_areas(self):
         """
@@ -690,7 +690,7 @@ class TerrainBasedSystem:
 
     def _assign_station3_commercial_buildings(self, total_slots):
         """
-        為火車站3周圍商業區分配建築類型\n
+        為小島周圍商業區分配建築類型\n
         根據用戶需求：2個便利商店，剩下都是工廠和2棟辦公大樓\n
         \n
         參數:\n
@@ -718,7 +718,7 @@ class TerrainBasedSystem:
         for _ in range(remaining_slots):
             assignments.append("factory")
         
-        print(f"火車站3商業區建築分配: 便利商店={config['convenience_store']}, 辦公大樓={office_count}, 工廠={remaining_slots}")
+        print(f"小島商業區建築分配: 便利商店={config['convenience_store']}, 辦公大樓={office_count}, 工廠={remaining_slots}")
         
         return assignments
 

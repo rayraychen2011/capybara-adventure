@@ -32,7 +32,7 @@ class FarmerWorkScheduler:
     \n
     工作流程：\n
     - 09:00：農夫到火車站前集合\n
-    - 09:20：集體傳送到火車站1旁農地工作\n
+    - 09:20：集體傳送到農地旁農地工作\n
     - 17:00：集體傳送回小鎮火車站前解散\n
     - 其他時間：在鎮上自由活動\n
     """
@@ -58,7 +58,7 @@ class FarmerWorkScheduler:
         
         # 位置設定
         self.town_station_position = None  # 小鎮火車站位置
-        self.farm_station_position = None  # 火車站1位置
+        self.farm_station_position = None  # 農地旁位置
         self.farm_work_area = None  # 農地工作區域
         
         # 集合和工作區域
@@ -104,12 +104,12 @@ class FarmerWorkScheduler:
         if self.terrain_system and hasattr(self.terrain_system, 'railway_system'):
             stations = self.terrain_system.railway_system.train_stations
             if len(stations) >= 2:
-                # 假設第一個火車站是小鎮火車站，第二個是火車站1
+                # 假設第一個火車站是小鎮火車站，第二個是農地旁
                 self.town_station_position = (stations[0].x + stations[0].width//2, 
                                             stations[0].y + stations[0].height + 20)
                 self.farm_station_position = (stations[1].x + stations[1].width//2, 
                                             stations[1].y + stations[1].height + 20)
-                print(f"火車站位置設定完成：小鎮站 {self.town_station_position}, 火車站1 {self.farm_station_position}")
+                print(f"火車站位置設定完成：小鎮站 {self.town_station_position}, 農地旁 {self.farm_station_position}")
             else:
                 print("警告：找不到足夠的火車站")
                 # 使用預設位置

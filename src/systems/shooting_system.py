@@ -22,7 +22,7 @@ class Bullet:
         start_pos (tuple): 起始位置 (x, y)\n
         target_pos (tuple): 目標位置 (x, y)\n
         damage (int): 傷害值\n
-        speed (float): 飛行速度（像素/秒）- 調整為較慢的速度\n
+        speed (float): 飛行速度（像素/秒）- 調慢以便玩家觀察\n
         """
         self.x, self.y = start_pos
         self.damage = damage
@@ -86,9 +86,9 @@ class Bullet:
         if self.life_time >= self.max_life_time:
             self.is_active = False
 
-        # 檢查是否飛出屏幕邊界
-        if (self.x < -50 or self.x > SCREEN_WIDTH + 50 or 
-            self.y < -50 or self.y > SCREEN_HEIGHT + 50):
+        # 檢查是否飛出世界地圖邊界（而不是螢幕邊界）
+        if (self.x < -50 or self.x > TOWN_TOTAL_WIDTH + 50 or 
+            self.y < -50 or self.y > TOWN_TOTAL_HEIGHT + 50):
             self.is_active = False
 
     def check_collision(self, target_rect):
@@ -154,10 +154,10 @@ class ShootingSystem:
         self.bullets = []  # 活躍的子彈列表
         self.last_shot_time = 0  # 上次射擊時間
         
-        # 全自動射擊設定 - BB槍每秒5發（降低射速）
+        # 全自動射擊設定 - BB槍每秒10發
         self.is_auto_firing = True  # 永遠開啟全自動模式
-        self.auto_fire_rate = 5.0  # 每秒5發子彈（降低射速）
-        self.shot_cooldown = 1.0 / self.auto_fire_rate  # 0.2秒間隔
+        self.auto_fire_rate = 10.0  # 每秒10發子彈
+        self.shot_cooldown = 1.0 / self.auto_fire_rate  # 0.1秒間隔
         
         # 射擊統計
         self.shots_fired = 0
@@ -166,7 +166,7 @@ class ShootingSystem:
         # 初始化音效系統
         self.sound_manager = ShootingSoundManager()
         
-        print("射擊系統初始化完成（BB槍全自動模式 - 每秒5發）")
+        print("射擊系統初始化完成（BB槍全自動模式 - 每秒10發）")
 
     def can_shoot(self, player):
         """
@@ -278,6 +278,11 @@ class ShootingSystem:
         # 更新所有子彈
         for bullet in self.bullets[:]:  # 使用切片複製避免修改列表時出錯
             bullet.update(dt)
+            
+            # 子彈更新調試
+            if len(self.bullets) <= 3:  # 只在子彈數量少時顯示，避免刷屏
+                print(f"🔹 子彈更新: 位置 ({bullet.x:.1f}, {bullet.y:.1f}), 存活 {bullet.life_time:.2f}s, 狀態: {'活躍' if bullet.is_active else '失效'}")
+            
             if not bullet.is_active:
                 self.bullets.remove(bullet)
 
@@ -348,7 +353,7 @@ class ShootingSystem:
         screen.blit(weapon_text, (10, SCREEN_HEIGHT - 60))
         
         # 顯示射擊模式
-        mode_text = font_manager.render_text_with_outline("🔥 BB槍全自動射擊中（每秒5發）", 20, (255, 100, 100))
+        mode_text = font_manager.render_text_with_outline("🔥 BB槍全自動射擊中（每秒10發）", 20, (255, 100, 100))
         screen.blit(mode_text, (10, SCREEN_HEIGHT - 90))
         
         # 顯示射擊統計（調試用）
@@ -643,11 +648,11 @@ class BBGun:
         self.name = "全自動BB槍"
         self.weapon_type = "bb_gun"
         
-        # 武器屬性 - 每秒5發設定
+        # 武器屬性 - 每秒10發設定
         self.damage = 20
         self.range = 250
         self.accuracy = 0.85
-        self.fire_rate = 5.0  # 每秒5發子彈（降低射速）
+        self.fire_rate = 10.0  # 每秒10發子彈
         self.magazine_size = 100
         self.reload_time = 1.0  # 1秒換彈時間
         self.ammo_type = "BB彈"

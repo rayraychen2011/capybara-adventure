@@ -402,10 +402,30 @@ class TownScene(Scene):
         # 更新射擊系統
         self.shooting_system.update(dt)
         
+        # 每60幀（約1秒）輸出一次子彈狀態
+        if not hasattr(self, '_bullet_debug_counter'):
+            self._bullet_debug_counter = 0
+        self._bullet_debug_counter += 1
+        if self._bullet_debug_counter % 60 == 0 and len(self.shooting_system.bullets) > 0:
+            print(f"🔸 當前場景中有 {len(self.shooting_system.bullets)} 發子彈")
+        
         # 檢查子彈與野生動物碰撞
         if hasattr(self, 'wildlife_manager') and self.wildlife_manager:
             # 獲取所有活著的動物用於碰撞檢測
             active_animals = [animal for animal in self.wildlife_manager.all_animals if animal.is_alive]
+            
+            # 動物狀態調試
+            print(f"🦎 野生動物狀態: 總計 {len(self.wildlife_manager.all_animals)} 隻，活著 {len(active_animals)} 隻")
+            
+            # 子彈與動物共存檢測
+            bullet_count = len(self.shooting_system.bullets)
+            animal_count = len(active_animals)
+            if bullet_count > 0:
+                print(f"⚡ 當前有 {bullet_count} 發子彈，{animal_count} 隻動物")
+            
+            # 碰撞檢測調試
+            if bullet_count > 0 and animal_count > 0:
+                print(f"🔍 碰撞檢測: {bullet_count} 發子彈 vs {animal_count} 隻動物")
             
             # 檢查子彈碰撞
             bullet_hits = self.shooting_system.check_bullet_collisions(active_animals)
@@ -432,7 +452,7 @@ class TownScene(Scene):
         
         # 檢查持續按住滑鼠左鍵的全自動射擊（BB槍特性）
         mouse_buttons = pygame.mouse.get_pressed()
-        if mouse_buttons[0]:  # 左鍵按住
+        if mouse_buttons[0] and self.player.is_fire_enabled():  # 左鍵按住且開火功能啟用
             mouse_pos = pygame.mouse.get_pos()
             camera_offset = (self.camera_controller.camera_x, self.camera_controller.camera_y)
             self.shooting_system.handle_mouse_shoot(self.player, mouse_pos, camera_offset)
@@ -715,10 +735,24 @@ class TownScene(Scene):
                     self.player.weapon_manager.switch_weapon("unarmed")
                 print("切換到空手")
                 return True
-            elif action == "talk_to_npc":
-                # 右鍵與NPC對話
+            elif action == "talk_to_npc" or action == "right_click":
+                # 右鍵點擊 - 與NPC對話或切換開火功能
                 world_x = event.pos[0] + self.camera_controller.camera_x
                 world_y = event.pos[1] + self.camera_controller.camera_y
+                
+                # 檢查是否點擊了玩家角色
+                player_rect = pygame.Rect(
+                    self.player.x - self.player.width//2,
+                    self.player.y - self.player.height//2,
+                    self.player.width,
+                    self.player.height
+                )
+                if player_rect.collidepoint(world_x, world_y):
+                    # 點擊玩家角色，切換開火功能
+                    self.player.toggle_fire_mode()
+                    return True
+                
+                # 檢查是否點擊了NPC
                 clicked_npc = self._find_npc_at_position(world_x, world_y)
                 if clicked_npc:
                     self.npc_dialogue_ui.show_dialogue(clicked_npc)
@@ -754,9 +788,13 @@ class TownScene(Scene):
                     
                     # 檢查玩家是否裝備槍械進行射擊
                     if self.player.can_shoot():  # 玩家裝備了槍
-                        # 射擊功能（攻擊野生動物）
-                        self._handle_weapon_shoot(event.pos, world_x, world_y)
+                        # 使用射擊系統發射可視子彈（新系統）
+                        camera_offset = (self.camera_controller.camera_x, self.camera_controller.camera_y)
+                        shoot_result = self.shooting_system.handle_mouse_shoot(self.player, event.pos, camera_offset)
+                        print(f"🔫 左鍵射擊: can_shoot={self.player.can_shoot()}, shoot_result={shoot_result}")
+                        print(f"   當前子彈數: {len(self.shooting_system.bullets)}")
                     else:
+                        print(f"❌ 無法射擊: can_shoot={self.player.can_shoot()}")
                         # 嘗試處理火車站點擊
                         if not self.terrain_system.handle_railway_click((world_x, world_y), self.player):
                             # 如果不是火車站點擊，嘗試住宅點擊

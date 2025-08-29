@@ -49,7 +49,7 @@ class ProfessionData:
 
     # 各職業的預定數量 (根據規格書)
     PROFESSION_COUNTS = {
-        Profession.FARMER: 50,  # 50名農夫工作在火車站1旁農地
+        Profession.FARMER: 50,  # 50名農夫工作在農地旁農地
         Profession.PRIEST: 0,
         Profession.NUN: 0,
         Profession.DOCTOR: 0,

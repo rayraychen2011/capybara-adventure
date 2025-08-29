@@ -65,7 +65,7 @@ class InputController:
         self.mouse_action_keys = {
             1: "left_click",      # 左鍵點擊 - 射擊
             2: "weapon_wheel",    # 中鍵點擊 - 開啟武器圓盤
-            3: "talk_to_npc",     # 右鍵點擊 - 與NPC對話
+            3: "right_click",     # 右鍵點擊 - 與NPC對話或切換開火功能
         }
         
         # 滑鼠按鍵狀態追蹤（用於全自動射擊）

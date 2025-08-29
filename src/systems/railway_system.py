@@ -298,6 +298,15 @@ class RailwaySystem:
         """
         print("從地形系統建立火車站...")
         
+        # 定義火車站名稱對應表
+        station_names = {
+            0: "農地旁",     # 火車站1改名為農地旁
+            1: "農地",       # 火車站2改名為農地
+            2: "小島",       # 火車站3改名為小島
+            3: "小鎮",       # 火車站4改名為小鎮
+            4: "荒蕪"        # 火車站5改名為荒蕪
+        }
+        
         station_count = 0
         
         # 尋找火車站地形（代碼11）
@@ -312,8 +321,8 @@ class RailwaySystem:
                     station_width = terrain_system.tile_size * 2
                     station_height = terrain_system.tile_size
                     
-                    # 創建火車站
-                    station_name = f"火車站{station_count + 1}"
+                    # 創建火車站 - 使用新的名稱對應表
+                    station_name = station_names.get(station_count, f"火車站{station_count + 1}")
                     station = TrainStation(
                         (station_x, station_y),
                         (station_width, station_height),
@@ -678,13 +687,13 @@ class RailwaySystem:
         處理目的地選擇\n
         \n
         參數:\n
-        selection_index (int): 選擇的目的地索引（0-8對應數字鍵1-9）\n
+        selection_index (int): 選擇的目的地索引（0-3對應數字鍵3-6）\n
         player: 玩家物件\n
         \n
         回傳:\n
         bool: 如果成功傳送則回傳True\n
         """
-        if (0 <= selection_index < len(self.destination_options) and selection_index < 9):
+        if (0 <= selection_index < len(self.destination_options) and selection_index < 4):
             destination = self.destination_options[selection_index]
             
             # 傳送玩家到目的地車站
@@ -901,10 +910,10 @@ class RailwaySystem:
                 # 繪製互動提示
                 try:
                     font_manager = get_font_manager()
-                    hint_text = font_manager.render_text("按數字鍵選擇目的地", 12, (255, 255, 0))
+                    hint_text = font_manager.render_text("按 3-6 數字鍵選擇目的地", 12, (255, 255, 0))
                 except:
                     font_manager = get_font_manager()
-                    hint_text = font_manager.render_text("按數字鍵選擇目的地", 12, (255, 255, 0))
+                    hint_text = font_manager.render_text("按 3-6 數字鍵選擇目的地", 12, (255, 255, 0))
                 
                 hint_rect = hint_text.get_rect(center=(screen_x + station.width//2, screen_y - 15))
                 
@@ -1003,13 +1012,13 @@ class RailwaySystem:
             pygame.draw.rect(screen, bg_color, option_rect)
             pygame.draw.rect(screen, (0, 150, 255), option_rect, 1)
             
-            # 繪製路線編號
+            # 繪製路線編號（顯示實際需要按的按鍵3-6）
             try:
                 font_manager = get_font_manager()
-                number_text = font_manager.render_text(f"{i+1}", 20, (255, 255, 0))
+                number_text = font_manager.render_text(f"{i+3}", 20, (255, 255, 0))
             except:
                 font_manager = get_font_manager()
-                number_text = font_manager.render_text(f"{i+1}", 20, (255, 255, 0))
+                number_text = font_manager.render_text(f"{i+3}", 20, (255, 255, 0))
             
             number_rect = pygame.Rect(screen_x + 25, option_y + 5, 30, 30)
             pygame.draw.rect(screen, (100, 100, 0), number_rect)
@@ -1047,11 +1056,11 @@ class RailwaySystem:
         
         try:
             font_manager = get_font_manager()
-            help_text = font_manager.render_text("按對應數字鍵選擇目的地", 14, (255, 255, 255))
+            help_text = font_manager.render_text("按 3-6 數字鍵選擇目的地", 14, (255, 255, 255))
             esc_text = font_manager.render_text("ESC: 取消", 12, (200, 200, 200))
         except:
             font_manager = get_font_manager()
-            help_text = font_manager.render_text("按對應數字鍵選擇目的地", 14, (255, 255, 255))
+            help_text = font_manager.render_text("按 3-6 數字鍵選擇目的地", 14, (255, 255, 255))
             esc_text = font_manager.render_text("ESC: 取消", 12, (200, 200, 200))
         
         help_rect = help_text.get_rect(center=(screen_x + screen_width//2, instruction_y + 15))
