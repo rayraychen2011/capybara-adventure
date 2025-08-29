@@ -847,11 +847,6 @@ class TownScene(Scene):
                 # 顯示所有NPC狀態資訊（按住TAB顯示，放開隱藏）
                 self.npc_status_ui.show()
                 return True
-
-            elif event.key == pygame.K_i:
-                # 打開物品欄
-                self.state_manager.change_state(GameState.INVENTORY)
-                return True
         
         elif event.type == pygame.KEYUP:
             # TAB鍵釋放 - 隱藏NPC狀態顯示

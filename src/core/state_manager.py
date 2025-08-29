@@ -13,7 +13,6 @@ class GameState(Enum):
     - MENU: 主選單畫面，玩家可以開始新遊戲或載入存檔\n
     - PLAYING: 正常遊戲進行中，玩家可以自由活動和互動\n
     - PAUSED: 遊戲暫停狀態，暫停所有遊戲邏輯但保持畫面\n
-    - INVENTORY: 背包管理畫面，玩家查看和管理物品\n
     - SHOPPING: 商店購物介面，與 NPC 進行交易\n
     - FISHING: 釣魚小遊戲進行中，特殊的互動模式\n
     - HUNTING: 狩獵模式，使用槍械狩獵動物\n
@@ -24,7 +23,6 @@ class GameState(Enum):
     MENU = "menu"
     PLAYING = "playing"
     PAUSED = "paused"
-    INVENTORY = "inventory"
     SHOPPING = "shopping"
     FISHING = "fishing"
     HUNTING = "hunting"
@@ -221,10 +219,9 @@ class StateManager:
         # 定義狀態轉換規則
         transition_rules = {
             GameState.MENU: [GameState.PLAYING, GameState.QUIT],
-            GameState.PLAYING: [GameState.PAUSED, GameState.INVENTORY, GameState.FISHING, 
+            GameState.PLAYING: [GameState.PAUSED, GameState.FISHING, 
                               GameState.HUNTING, GameState.DRIVING, GameState.SHOPPING, GameState.MENU],
             GameState.PAUSED: [GameState.PLAYING, GameState.MENU],
-            GameState.INVENTORY: [GameState.PLAYING],
             GameState.SHOPPING: [GameState.PLAYING],
             GameState.FISHING: [GameState.PLAYING],
             GameState.HUNTING: [GameState.PLAYING],

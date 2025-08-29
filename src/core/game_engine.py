@@ -9,7 +9,6 @@ from src.scenes.town.town_scene_refactored import TownScene
 from src.scenes.forest_scene import ForestScene
 from src.scenes.lake_scene import LakeScene
 from src.scenes.home_scene import HomeScene
-from src.scenes.inventory_scene import InventoryScene
 from src.utils.font_manager import init_font_system
 from src.systems.time_system import TimeManager
 from src.utils.time_ui import TimeDisplayUI
@@ -118,10 +117,6 @@ class GameEngine:
             # 建立家的場景
             home_scene = HomeScene(self.state_manager)
             self.scene_manager.register_scene(SCENE_HOME, home_scene)
-
-            # 建立背包場景
-            inventory_scene = InventoryScene(self.state_manager, self.current_player)
-            self.scene_manager.register_scene("inventory", inventory_scene)
 
             # 建立教堂內部場景
             from src.scenes.church_interior_scene import ChurchInteriorScene
@@ -272,10 +267,6 @@ class GameEngine:
                 # 如果從選單進入遊戲，切換到小鎮
                 self.scene_manager.change_scene(SCENE_TOWN)
 
-        elif new_state == GameState.INVENTORY:
-            # 切換到背包場景
-            self.scene_manager.change_scene("inventory")
-
         elif new_state == GameState.HOME:
             # 切換到家的場景
             self.scene_manager.change_scene(SCENE_HOME)
@@ -304,7 +295,7 @@ class GameEngine:
                     elif self.state_manager.is_state(GameState.MENU):
                         self.state_manager.change_state(GameState.QUIT)
                     else:
-                        # 其他狀態下 ESC 返回遊戲（包括 HOME、INVENTORY 等）
+                        # 其他狀態下 ESC 返回遊戲（包括 HOME 等）
                         self.state_manager.change_state(GameState.PLAYING)
                     continue
 

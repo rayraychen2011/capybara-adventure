@@ -613,9 +613,8 @@ class LakeScene(Scene):
         action = self.input_controller.handle_event(event)
 
         if action:
-            if action == "inventory":
-                self.state_manager.change_state(GameState.INVENTORY)
-                return True
+            # 移除背包功能，保持其他動作的處理
+            pass
 
         # 檢查物品欄選擇
         if event.type == pygame.KEYDOWN:

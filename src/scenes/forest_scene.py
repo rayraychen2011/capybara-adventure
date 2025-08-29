@@ -526,9 +526,10 @@ class ForestScene(Scene):
                     print("退出狩獵模式")
                 return True
 
-            elif action == "inventory":
-                self.state_manager.change_state(GameState.INVENTORY)
-                return True
+            # 移除背包功能
+            # elif action == "inventory":
+            #     self.state_manager.change_state(GameState.INVENTORY)
+            #     return True
 
         # 檢查物品欄選擇
         if event.type == pygame.KEYDOWN:
